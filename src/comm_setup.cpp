@@ -1,12 +1,14 @@
 #include "basic.hpp"
 #include "mpi_proto.h"
+#include <cstdlib>
 #include <numeric>
 #include <streambuf>
 
 using namespace SpKernels;
 using namespace std;
 
-void SpKernels::setup_3dsddmm(denseMatrix& Aloc, denseMatrix& Bloc, coo_mtx& Cloc, vector<int>& rpvec, vector<int>& cpvec, SparseComm<real_t>& comm_expand, SparseComm<real_t>& comm_reduce, MPI_Comm comm){
+
+void SpKernels::setup_3dsddmm_expand(denseMatrix& Aloc, denseMatrix& Bloc, coo_mtx& Cloc, vector<int>& rpvec, vector<int>& cpvec, SparseComm<real_t>& comm_expand, SparseComm<real_t>& comm_reduce, MPI_Comm comm){
    
     int myrank, size, inDegree=0, outDegree=0;
     MPI_Comm_rank(comm, &myrank);
@@ -39,16 +41,28 @@ void SpKernels::setup_3dsddmm(denseMatrix& Aloc, denseMatrix& Bloc, coo_mtx& Clo
     esc.recvDisp.resize(esc.inDegree+2, 0); esc.sendDisp.resize(esc.outDegree+2,0);
 
     vector<int> gtlR(size,-1), gtlS(size,-1);
-    for (int i = 0, tcnt =0; i < size; ++i) { if(sendCount[i] > 0 && i != myrank ){ gtlR[i] = tcnt; esc.recvCount[tcnt++] = sendCount[i];} }
-    for (int i = 0, tcnt=0; i < size; ++i) { if(sendCount[i] > 0 && i != myrank ){ gtlS[i] = tcnt; esc.sendCount[tcnt++] = recvCount[i];} }
+    for (int i = 0, tcnt =0; i < size; ++i) { if(sendCount[i] > 0 && i != myrank ){ gtlR[i] = tcnt; esc.recvCount[tcnt++] = sendCount[i]*2;} }
+    for (int i = 0, tcnt=0; i < size; ++i) { if(sendCount[i] > 0 && i != myrank ){ gtlS[i] = tcnt; esc.sendCount[tcnt++] = recvCount[i]*2;} }
     for (int i = 2; i <= outDegree+1; ++i) { esc.sendDisp.at(i) = esc.sendDisp.at(i-1) + esc.sendCount.at(i-1);}
     for (int i = 2; i <= inDegree+1; ++i) { esc.recvDisp.at(i) = esc.recvDisp.at(i-1) + esc.recvCount.at(i-1);}
 
     /* Tell processors what rows/cols you want from them */
     /* 1 - determine what to send */
-    for ( size_t i = 0; i < Cloc.grows; ++i) { int ploc = gtlR[rpvec[i]]; if(myRows[i]) esc.sendBuff.at(esc.sendDisp.at(ploc+1)++) = i;}
-    for ( size_t i = 0; i < Cloc.gcols; ++i) { int ploc = gtlR[cpvec[i]]; if(myCols[i]) esc.sendBuff.at(esc.sendDisp.at(ploc+1)++) = i;}
-    esc.perform_sparse_comm(1);
+    for ( size_t i = 0; i < Cloc.grows; ++i) {
+        int ploc = gtlR[rpvec[i]]; 
+        if(myRows[i]) {
+            esc.sendBuff.at(esc.sendDisp.at(ploc+1)++) = 0;
+            esc.sendBuff.at(esc.sendDisp.at(ploc+1)++) = i;
+        }
+    }
+    for ( size_t i = 0; i < Cloc.gcols; ++i) {
+        int ploc = gtlR[cpvec[i]];
+        if(myCols[i]){ 
+            esc.sendBuff.at(esc.sendDisp.at(ploc+1)++) = 1;
+            esc.sendBuff.at(esc.sendDisp.at(ploc+1)++) = i;
+        }
+    }
+    esc.perform_sparse_comm(2);
 
     /* now recv from each processor available in recvBuff */
     idx_t f = Aloc.n;
@@ -57,20 +71,49 @@ void SpKernels::setup_3dsddmm(denseMatrix& Aloc, denseMatrix& Bloc, coo_mtx& Clo
     comm_expand.recvBuff.resize(totRecvCnt * f); 
     comm_expand.recvptr.resize(totRecvCnt); 
     
+    /* prepare expand sendbuff based on the row/col IDs I recv 
+     * (what I send is what other processors tell me to send)*/
     for ( size_t i = 0;  i < esc.inDegree; ++ i) {
         idx_t d = esc.recvDisp[i];
-        for (size_t j = 0; j < esc.recvCount[i]; ++j) {
-           idx_t idx = esc.recvBuff[d+i];
-           comm_expand
+        for (size_t j = 0; j < esc.recvCount[i]; j+=2) {
+           idx_t side = esc.recvBuff.at(d+j);
+           idx_t idx = esc.recvBuff.at(d+j+1);
+           if(side == 0) comm_expand.sendptr.at(d+(j/2)) = &Aloc.data.at(Aloc.gtl.at(idx) * f);
+           else if(side == 1) comm_expand.sendptr.at(d+(j/2)) = &Bloc.data.at(Bloc.gtl.at(idx) * f);
+           else{
+            fprintf(stderr, "Error in comm setup: side neither 0 nor 1\n");
+            goto ERR_EXIT;
+           }
+        }
+    }
+    /* prepare expand recvbuff based on row/col IDs I send
+     * (what I recv is what I tell other processors to send) */
+    for(size_t i = 0; i < esc.outDegree; ++i){
+        idx_t d = esc.sendDisp[i];
+        for (size_t j = 0; j < esc.sendCount[i]; j+=2) {
+           idx_t side = esc.sendBuff.at(d+j);
+           idx_t idx = esc.sendBuff.at(d+j+1);
+           if(side == 0) comm_expand.recvptr.at(d+(j/2)) = &Aloc.data.at(Aloc.gtl.at(idx) * f);
+           else if(side == 1) comm_expand.recvptr.at(d+(j/2)) = &Bloc.data.at(Bloc.gtl.at(idx) * f);
+           else{
+            fprintf(stderr, "Error in comm setup: side neither 0 nor 1\n");
+            goto ERR_EXIT;
+           }
         }
     }
     /* exchange row/col ids */
     for (int i = 0; i < inDegree; ++i) {
     
     }
-    
-    
+    return;
 
-    
+    ERR_EXIT:
+        MPI_Finalize();
+        exit(EXIT_FAILURE);
+}
+
+void SpKernels::setup_3dsddmm(denseMatrix& Aloc, denseMatrix& Bloc, coo_mtx& Cloc, SparseComm<real_t> &comm_expand, SparseComm<real_t> &comm_reduce, MPI_Comm comm){
+
+    setup_3dsddmm_expand(Aloc, Bloc, Cloc);
 
 }
