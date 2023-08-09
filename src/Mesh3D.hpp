@@ -1,13 +1,27 @@
 #pragma once
 
 #include "basic.hpp"
+#include "mpi.h"
+#include <cstdlib>
 
 
 namespace SpKernels{
     class Mesh3D
     {
         public:
-            Mesh3D (int X, int Y, int Z){
+            Mesh3D (int X, int Y, int Z, MPI_Comm comm=MPI_COMM_WORLD){
+                int size, rank;
+                MPI_Comm_size(comm, &size);
+                MPI_Comm_rank(comm, &rank);
+                if(X*Y*Z != size) {
+                    fprintf(stderr, "ERROR: mult of dims is not equal"
+                           " to size");
+                    MPI_Finalize();
+                    exit(EXIT_FAILURE);
+                }
+                this->comm = comm;
+                this->rank = rank;
+                this->size = size;
                 this->X = X; this->MX = 1;
                 this->Y = Y; this->MY = X;
                 this->Z = Z; this->MZ = MY * Y;
@@ -53,10 +67,15 @@ namespace SpKernels{
                 for(size_t i=0; i < X; ++i) NX.push_back(getRankFromCoords(i, coords[1], coords[2]));
                 return NX;
             }
+            int getRank() {return rank;}
+            int getSize() {return size;}
+            MPI_Comm getComm() {return comm;}
         private:
             /* data */
             int X,Y,Z;
             int MX, MY, MZ;
+            int size, rank;
+            MPI_Comm comm;
             
     };
 

@@ -107,7 +107,11 @@ namespace SpKernels {
            }
         }
         MPI_Bcast(Cloc.owners.data(), Cloc.lnnz, MPI_INT, 0, zcomm);
+        MPI_Comm_free(&zcomm);
     }
+
+
+    /* this function operates on 2D mesh (communicator split over z) */
     void distribute3D_AB(
             
 /*             denseMatrix& A,
@@ -117,14 +121,57 @@ namespace SpKernels {
             Mesh3D& mesh3d,
             denseMatrix& Aloc,
             denseMatrix& Bloc,
+            std::vector<int>& rpvec2D,
+            std::vector<int>& cpvec2D,
+            std::vector<int>& rpvec,
+            std::vector<int>& cpvec,
             const coo_mtx& Cloc,
             const idx_t f,
+            int zcoord,
             MPI_Comm comm)
     {
+        idx_t M = Cloc.grows, N = Cloc.gcols;
         Aloc.m = Cloc.grows; Aloc.n = f;
         Bloc.m = Cloc.gcols; Bloc.n = f;
-        
+        int rank, size;
+        MPI_Comm_rank( comm, &rank);
+        MPI_Comm_size( comm, &size);
+        if(rank == 0){
+            int X = mesh3d.getX(), Y=mesh3d.getY();
+            std::vector<size_t> cntsPer2Drow(X,0);
+            std::vector<size_t> cntsPer2Dcol(Y,0);
+            for(size_t i=0; i < M; ++i){
+                int rowid2D = rpvec2D[i];
+                rpvec[i] = mesh3d.getRankFromCoords(rowid2D, 
+                        cntsPer2Drow[rowid2D]++ % Y, zcoord); 
+            }
+            for(size_t i=0; i < N; ++i){
+                int colid2D = cpvec2D[i];
+                cpvec[i] = mesh3d.getRankFromCoords(colid2D, 
+                        cntsPer2Dcol[colid2D]++ % X, zcoord); 
+            }
 
-        
+        }
+        MPI_Bcast(rpvec.data(), M, MPI_INT, 0, comm);
+        MPI_Bcast(cpvec.data(), N, MPI_INT, 0, comm);
+        Aloc.m = 0; Aloc.n = f;
+        Bloc.m = 0; Bloc.n = f;
+        for(size_t i = 0; i < M; ++i) if(rpvec[i] == mesh3d.getRank())
+            Aloc.m++;
+        for(size_t i = 0; i < N; ++i) if(cpvec[i] == mesh3d.getRank())
+            Bloc.m++;
+        Aloc.data.resize(Aloc.m * Aloc.n, 1);
+        Bloc.data.resize(Bloc.m * Bloc.n, 1);
+    }
+
+
+    void distribute(coo_mtx& C, coo_mtx& Cloc, denseMatrix& Aloc, 
+            denseMatrix& Bloc, std::vector<int> rpvec, 
+            std::vector<int> cpvec, Mesh3D& mesh3d){
+
+        std:: vector<int> rpvec2D(mesh3d.getX()), cpvec2D(mesh3d.getY());
+        distribute3D_C(C, mesh3d, Cloc, mesh3d.getComm()); 
+
+
     }
 }
