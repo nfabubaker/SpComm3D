@@ -16,6 +16,9 @@ namespace SpKernels{
             int getX(){return X;}
             int getY(){return Y;}
             int getZ(){return Z;}
+            int getMX(){return MX;}
+            int getMY(){return MY;}
+            int getMZ(){return MZ;}
             int* getAllCoords(int rank){
                 static int coords[3];
                 coords[2] = rank/MZ;

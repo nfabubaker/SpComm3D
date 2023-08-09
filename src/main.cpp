@@ -21,14 +21,14 @@ void communicate_post(){
 }
 
 void multiply(real_t const * const Aloc, real_t const * const Bloc, coo_mtx * const Cloc, const idx_t f){
-    for(idx_t i = 0; i < Cloc->nnz; ++i){ 
+    for(idx_t i = 0; i < Cloc->lnnz; ++i){ 
         idx_t row, col;
         row = Cloc->elms[i].row;
         col = Cloc->elms[i].col;
-        Cloc->elms[i].val = 0.0;
         real_t const *Ap = Aloc + (row * f); real_t const *Bp = Bloc+(col*f);
-        real_t &vp = Cloc->elms[i].val; 
+        real_t vp =0.0;
         for (int j = 0; j < f; j++){ vp += Ap[j]*Bp[j]; ++Ap; ++Bp;}
+        Cloc->elms[i].val *= vp; 
     }
 }
 

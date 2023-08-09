@@ -31,6 +31,7 @@ namespace SpKernels {
 
     typedef struct _coo_mtx{
         idx_t lrows, lcols, lnnz, grows, gcols, gnnz;
+        std::vector<int> owners; /* owner per local nnz */
         std::vector<triplet> elms;
     } coo_mtx;
 
