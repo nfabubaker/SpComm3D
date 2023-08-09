@@ -3,6 +3,7 @@
 #include <sys/types.h>
 #include <vector>
 #include "basic.hpp"
+#include "mm.hpp"
 
 
 
@@ -42,6 +43,10 @@ int main(int argc, char *argv[])
     MPI_Comm_size(comm, &size);
     SparseComm comm_expand;
     SparseComm comm_reduce;
+    string filename = "smth";
+    coo_mtx C;
+    mm _mm(filename); 
+    C = _mm.read_mm(filename); 
     setup_3dsddmm(comm_expand, comm_reduce);
     communicate_pre();
     multiply();

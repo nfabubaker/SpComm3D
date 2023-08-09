@@ -14,12 +14,13 @@ namespace SpKernels {
             coo_mtx& C,
             Mesh3D& mesh3d,
             coo_mtx& Cloc,
+            std::vector<int> rpvec2D,
+            std::vector<int> cpvec2D,
             MPI_Comm comm)
     {
         int rank, size;
         MPI_Comm_size(comm, &size);
         MPI_Comm_rank(comm, &rank);
-        std::vector<int> rpvec(C.grows, -1), cpvec(C.gcols, -1); 
         std::vector<idx_t> row_space(C.grows), col_space(C.gcols);
         for(size_t i = 0; i < C.grows; ++i) row_space[i] = i;
         for(size_t i = 0; i < C.gcols; ++i) col_space[i] = i;
@@ -27,16 +28,16 @@ namespace SpKernels {
         std::random_shuffle(col_space.begin(), col_space.end());
         /* assign Rows/Cols with RR */
         for(size_t i = 0, p=0; i < C.grows; ++i)
-            rpvec[row_space[i]] = (p++) % mesh3d.getX(); 
+            rpvec2D[row_space[i]] = (p++) % mesh3d.getX(); 
         for(size_t i = 0, p=0; i < C.gcols; ++i) 
-            cpvec[col_space[i]] = (p++) % mesh3d.getY(); 
+            cpvec2D[col_space[i]] = (p++) % mesh3d.getY(); 
 
         std::vector<std::vector<idx_t>> mesh2DCnt(mesh3d.getX(),
                 std::vector<idx_t> (mesh3d.getY(), 0));
         /* now rows/cols are divided, now distribute nonzeros */
         /* first: count nnz per 2D block */
         for(auto& t : C.elms){
-            mesh2DCnt[rpvec[t.row]][cpvec[t.col]]++; 
+            mesh2DCnt[rpvec2D[t.row]][cpvec2D[t.col]]++; 
         }
         std::vector<idx_t> frontMeshCnts(size, 0);
         for(size_t i = 0; i < mesh3d.getX(); ++i){
@@ -63,7 +64,7 @@ namespace SpKernels {
                 M[i].resize(frontMeshCnts[i]);
        
         for(auto& t : C.elms){
-            int p = mesh3d.getRankFromCoords(rpvec[t.row], cpvec[t.col], 0);
+            int p = mesh3d.getRankFromCoords(rpvec2D[t.row], cpvec2D[t.col], 0);
             M[p][tcnts[p]++] = t;
         }
 
@@ -165,13 +166,21 @@ namespace SpKernels {
     }
 
 
-    void distribute(coo_mtx& C, coo_mtx& Cloc, denseMatrix& Aloc, 
+    void distribute3D(coo_mtx& C, coo_mtx& Cloc, denseMatrix& Aloc, 
             denseMatrix& Bloc, std::vector<int> rpvec, 
             std::vector<int> cpvec, Mesh3D& mesh3d){
 
-        std:: vector<int> rpvec2D(mesh3d.getX()), cpvec2D(mesh3d.getY());
-        distribute3D_C(C, mesh3d, Cloc, mesh3d.getComm()); 
-
-
+        std:: vector<int> rpvec2D(C.grows), cpvec2D(C.gcols);
+        /*
+         * Distribute C and fill rpvec2D, cpvec2D
+         */
+        idx_t f = 10;
+        distribute3D_C(C, mesh3d, Cloc, rpvec2D, cpvec2D, mesh3d.getComm()); 
+        // split the 3D mesh communicator to 2D slices 
+        int color = mesh3d.getRank() / mesh3d.getMZ();
+        MPI_Comm twodimcomm;
+        MPI_Comm_split(mesh3d.getComm(), color, mesh3d.getRank(), &twodimcomm); 
+        distribute3D_AB(mesh3d, Aloc, Bloc, rpvec2D, cpvec2D, rpvec, cpvec, Cloc,
+                f, color, twodimcomm); 
     }
 }
