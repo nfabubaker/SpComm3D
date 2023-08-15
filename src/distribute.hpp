@@ -168,19 +168,25 @@ namespace SpKernels {
 
     void distribute3D(coo_mtx& C, coo_mtx& Cloc, denseMatrix& Aloc, 
             denseMatrix& Bloc, std::vector<int> rpvec, 
-            std::vector<int> cpvec, Mesh3D& mesh3d){
+            std::vector<int> cpvec, Mesh3D& mesh3d, idx_t f){
 
         std:: vector<int> rpvec2D(C.grows), cpvec2D(C.gcols);
         /*
          * Distribute C and fill rpvec2D, cpvec2D
          */
-        idx_t f = 10;
+        idx_t floc = f / mesh3d.getZ();
+        if(f % mesh3d.getZ() > 0){
+            int myzcoord = mesh3d.getZCoord(mesh3d.getRank());
+            if(myzcoord < f%mesh3d.getZ()) ++floc;
+        }
+
         distribute3D_C(C, mesh3d, Cloc, rpvec2D, cpvec2D, mesh3d.getComm()); 
         // split the 3D mesh communicator to 2D slices 
         int color = mesh3d.getRank() / mesh3d.getMZ();
         MPI_Comm twodimcomm;
         MPI_Comm_split(mesh3d.getComm(), color, mesh3d.getRank(), &twodimcomm); 
-        distribute3D_AB(mesh3d, Aloc, Bloc, rpvec2D, cpvec2D, rpvec, cpvec, Cloc,
-                f, color, twodimcomm); 
+        /* distribute Aloc and Bloc  */
+        distribute3D_AB(mesh3d, Aloc, Bloc, rpvec2D, cpvec2D, rpvec, cpvec,
+                Cloc, f, color, twodimcomm); 
     }
 }

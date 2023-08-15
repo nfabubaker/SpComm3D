@@ -44,7 +44,7 @@ void SpKernels::setup_3dsddmm_expand(denseMatrix& Aloc, denseMatrix& Bloc, coo_m
     for (int i = 0, tcnt =0; i < size; ++i) { if(sendCount[i] > 0 && i != myrank ){ gtlR[i] = tcnt; esc.recvCount[tcnt++] = sendCount[i]*2;} }
     for (int i = 0, tcnt=0; i < size; ++i) { if(sendCount[i] > 0 && i != myrank ){ gtlS[i] = tcnt; esc.sendCount[tcnt++] = recvCount[i]*2;} }
     for (int i = 2; i <= outDegree+1; ++i) { esc.sendDisp.at(i) = esc.sendDisp.at(i-1) + esc.sendCount.at(i-1);}
-    for (int i = 2; i <= inDegree+1; ++i) { esc.recvDisp.at(i) = esc.recvDisp.at(i-1) + esc.recvCount.at(i-1);}
+    for (int i = 1; i <= inDegree; ++i) { esc.recvDisp.at(i) = esc.recvDisp.at(i-1) + esc.recvCount.at(i-1);}
 
     /* Tell processors what rows/cols you want from them */
     /* 1 - determine what to send */
@@ -116,4 +116,87 @@ void SpKernels::setup_3dsddmm(denseMatrix& Aloc, denseMatrix& Bloc, coo_mtx& Clo
 
     setup_3dsddmm_expand(Aloc, Bloc, Cloc);
 
+}
+
+void SpKernels::setup_3dsddmm_reduce(coo_mtx& Cloc, SparseComm<real_t>& comm_reduce, MPI_Comm comm){
+
+    int myrank, size;
+    MPI_Comm_rank(comm, &myrank);
+    MPI_Comm_size(comm, &size);
+    vector<idx_t> RecvCntPP(size, 0), SendCntPP(size, 0);    
+    for(size_t i =0; i < Cloc.lnnz; ++i){
+        RecvCntPP.at(Cloc.owners.at(i))++;
+    }
+    MPI_Alltoall(RecvCntPP.data(), 1, MPI_IDX_T, SendCntPP.data(),1,
+            MPI_IDX_T, comm); 
+    SparseComm<idx_t> rsc; /* short for reduce setup comm */
+    vector<int> gtlR(size, -1), gtlS(size, -1);
+    idx_t totRecvCnt = 0, totSendCnt = 0;
+    for(int i=0; i < size; ++i){
+        if(RecvCntPP[i] > 0 && i != myrank) {
+            rsc.inSet.push_back(i);
+            gtlR[i] = rsc.inDegree++;
+            totRecvCnt += RecvCntPP[i];
+        }
+        if(SendCntPP[i] > 0 && i != myrank) {
+            rsc.outSet.push_back(i);
+            gtlS[i] = rsc.outDegree++;
+            totSendCnt += SendCntPP[i];
+        }
+    }
+
+    /* I will communicate the indices of the local nonzeros */
+    rsc.recvBuff.resize(totRecvCnt);
+    rsc.sendBuff.resize(totSendCnt);
+    rsc.recvCount.resize(rsc.inDegree);
+    rsc.sendCount.resize(rsc.outDegree);
+    rsc.recvDisp.resize(rsc.inDegree+2, 0);
+    rsc.sendDisp.resize(rsc.outDegree+2, 0);
+    for(int i = 0; i < rsc.inDegree; ++i){
+        int p = rsc.inSet[i];
+        rsc.recvCount[i] = RecvCntPP[p];
+        if( i < rsc.inDegree-1 )
+            rsc.recvDisp[i+1] = rsc.recvDisp[i] + rsc.recvCount[i]; 
+    }
+    for(int i = 0; i < rsc.outDegree; ++i){
+        int p = rsc.outSet[i];
+        rsc.sendCount[i] = SendCntPP[p];
+        if( i < rsc.outDegree-1 )
+            rsc.sendDisp[i+1] = rsc.sendDisp[i] + rsc.sendCount[i]; 
+    }
+    /* prepare send buffer: telling others what I want them to send me */
+    for(size_t  i = 0; i < Cloc.lnnz; ++i){
+        int p = Cloc.owners.at(i);
+        if(p != myrank)
+            rsc.sendBuff.at(rsc.sendDisp.at(gtlS.at(p)+1)++) = i;
+
+    }
+    rsc.perform_sparse_comm(1);
+
+    comm_reduce.inSet.assign(rsc.outSet.begin(), rsc.outSet.end());
+    comm_reduce.inDegree = rsc.outDegree;
+    comm_reduce.outSet.assign(rsc.inSet.begin(), rsc.inSet.end());
+    comm_reduce.outDegree = rsc.inDegree;
+    comm_reduce.recvCount = rsc.sendCount;
+    comm_reduce.sendCount = rsc.recvCount;
+    comm_reduce.recvDisp = rsc.sendDisp;
+    comm_reduce.sendDisp = rsc.recvDisp;
+    comm_reduce.sendBuff.resize(totRecvCnt);
+    comm_reduce.recvBuff.resize(totSendCnt);
+
+    /* go over recvd data to check what will I send per processor */
+    for(int i = 0; i < rsc.inDegree; ++i){
+        idx_t disp = rsc.recvDisp[i];
+        for(idx_t j =0 ; j < rsc.recvCount[i]; ++j){
+           comm_reduce.sendptr[disp+j] = &Cloc.elms[rsc.recvBuff[disp+j]].val; 
+        }
+    }
+    /* FIXME the problem here is that recv will not consider the original
+     * value of Cloc.elms[i].val --> this should be preserved first*/
+    for(int i = 0; i < rsc.outDegree; ++i){
+        idx_t disp = rsc.sendDisp[i];
+        for(idx_t j =0 ; j < rsc.sendCount[i]; ++j){
+           comm_reduce.recvptr[disp+j] = &Cloc.elms[rsc.sendBuff[disp+j]].val; 
+        }
+    }
 }
