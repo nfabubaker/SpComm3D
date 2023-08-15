@@ -30,7 +30,7 @@ namespace SpKernels {
     } denseMatrix;
 
     typedef struct _coo_mtx{
-        idx_t lrows, lcols, lnnz, grows, gcols, gnnz;
+        idx_t lrows, lcols, lnnz, ownedNnz, grows, gcols, gnnz;
         std::vector<int> owners; /* owner per local nnz */
         std::vector<triplet> elms;
     } coo_mtx;
@@ -43,6 +43,7 @@ namespace SpKernels {
                 /* data */
                 MPI_Comm commP, commN;
                 int inDegree, outDegree;
+                idx_t dataUnitSize;
                 std::vector<int> inSet, outSet;
                 std::vector<idx_t> sendCount, recvCount;
                 std::vector<idx_t> sendDisp, recvDisp;
@@ -54,15 +55,15 @@ namespace SpKernels {
                 SparseComm ();
                 virtual ~SparseComm ();
                 std::vector<T *> get_sendptr(){return this->sendptr;}
-                void copy_to_sendbuff(idx_t f){
+                void copy_to_sendbuff(){
                     /* copy to sendBuff */
                     size_t idx = 0;
                     for (size_t i = 0; i < sendptr.size() ; ++i) {
-                        if(f > 1){ T *p = sendptr[i]; for (size_t i = 0; i < f ; ++i) sendBuff[idx++] = *p++;}
+                        if(this->dataUnitSize > 1){ T *p = sendptr[i]; for (size_t i = 0; i < this->dataUnitSize ; ++i) sendBuff[idx++] = *p++;}
                         else sendBuff[idx++] = *sendptr[i];
                     }
                 }
-                void perform_sparse_comm(idx_t f){
+                void perform_sparse_comm(){
                     /* TODO implement more efficient Irecv .. etc */
                     if(commT == P2P){ 
                         int i,j;
@@ -74,11 +75,15 @@ namespace SpKernels {
 
 
                 }
-                void copy_from_recvbuff(idx_t f){
+                void copy_from_recvbuff(){
                     /* copy from recvBuff */
                     size_t idx = 0;
                     for (size_t i = 0; i < recvptr.size() ; ++i) {
-                        if(f > 1){ real_t *p = recvptr[i]; for (size_t i = 0; i < f ; ++i) *p++ = recvBuff[idx++];}
+                        if(this->dataUnitSize > 1){ 
+                            real_t *p = recvptr[i];
+                            for (size_t i = 0; i < this->dataUnitSize ; ++i)
+                                *p++ = recvBuff[idx++];
+                        }
                         else *recvptr[i] = recvBuff[idx++];
                     }
                 }
@@ -93,6 +98,7 @@ namespace SpKernels {
             private:
         };
 
-    void setup_3dsddmm(coo_mtx& Cloc, SparseComm& comm_expand, SparseComm& comm_reduce);
+    void setup_3dsddmm(coo_mtx& C, coo_mtx&Cloc, denseMatrix& Aloc, denseMatrix& Bloc, 
+            SparseComm<real_t>& comm_expand, SparseComm<real_t>& comm_reduce, MPI_Comm comm, idx_t f, int c);
 
 }

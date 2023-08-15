@@ -168,12 +168,19 @@ namespace SpKernels {
 
     void distribute3D(coo_mtx& C, coo_mtx& Cloc, denseMatrix& Aloc, 
             denseMatrix& Bloc, std::vector<int> rpvec, 
-            std::vector<int> cpvec, Mesh3D& mesh3d, idx_t f){
+            std::vector<int> cpvec, MPI_Comm* xycomm, MPI_Comm* zcomm, 
+            MPI_Comm world_comm, idx_t f, int c ){
 
         std:: vector<int> rpvec2D(C.grows), cpvec2D(C.gcols);
         /*
          * Distribute C and fill rpvec2D, cpvec2D
          */
+        int myrank, size;
+        MPI_Comm_size(world_comm, &size);
+        MPI_Comm_rank(world_comm, &myrank);
+        std::array<int, 3> dims; dims[2] = c;
+        MPI_Dims_create(size, 3, dims.data());
+        Mesh3D mesh3d(dims[0], dims[1], dims[2], world_comm);
         idx_t floc = f / mesh3d.getZ();
         if(f % mesh3d.getZ() > 0){
             int myzcoord = mesh3d.getZCoord(mesh3d.getRank());

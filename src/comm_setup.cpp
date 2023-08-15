@@ -1,14 +1,15 @@
 #include "basic.hpp"
-#include "mpi_proto.h"
 #include <cstdlib>
 #include <numeric>
 #include <streambuf>
+#include "distribute.hpp"
+
 
 using namespace SpKernels;
 using namespace std;
 
 
-void SpKernels::setup_3dsddmm_expand(denseMatrix& Aloc, denseMatrix& Bloc, coo_mtx& Cloc, vector<int>& rpvec, vector<int>& cpvec, SparseComm<real_t>& comm_expand, SparseComm<real_t>& comm_reduce, MPI_Comm comm){
+void setup_3dsddmm_expand(denseMatrix& Aloc, denseMatrix& Bloc, coo_mtx& Cloc, vector<int>& rpvec, vector<int>& cpvec, SparseComm<real_t>& comm_expand, SparseComm<real_t>& comm_reduce, MPI_Comm comm){
    
     int myrank, size, inDegree=0, outDegree=0;
     MPI_Comm_rank(comm, &myrank);
@@ -112,13 +113,8 @@ void SpKernels::setup_3dsddmm_expand(denseMatrix& Aloc, denseMatrix& Bloc, coo_m
         exit(EXIT_FAILURE);
 }
 
-void SpKernels::setup_3dsddmm(denseMatrix& Aloc, denseMatrix& Bloc, coo_mtx& Cloc, SparseComm<real_t> &comm_expand, SparseComm<real_t> &comm_reduce, MPI_Comm comm){
 
-    setup_3dsddmm_expand(Aloc, Bloc, Cloc);
-
-}
-
-void SpKernels::setup_3dsddmm_reduce(coo_mtx& Cloc, SparseComm<real_t>& comm_reduce, MPI_Comm comm){
+void setup_3dsddmm_reduce(coo_mtx& Cloc, SparseComm<real_t>& comm_reduce, MPI_Comm comm){
 
     int myrank, size;
     MPI_Comm_rank(comm, &myrank);
@@ -199,4 +195,11 @@ void SpKernels::setup_3dsddmm_reduce(coo_mtx& Cloc, SparseComm<real_t>& comm_red
            comm_reduce.recvptr[disp+j] = &Cloc.elms[rsc.sendBuff[disp+j]].val; 
         }
     }
+}
+
+void SpKernels::setup_3dsddmm(coo_mtx& C, coo_mtx&Cloc, denseMatrix& Aloc, denseMatrix& Bloc, 
+        SparseComm<real_t>& comm_expand, SparseComm<real_t>& comm_reduce, MPI_Comm comm, idx_t f, int c){
+    MPI_Comm xycomm, zcomm;
+    vector<int> rpvec(C.grows), cpvec(C.gcols); 
+    distribute3D(C, Cloc, Aloc, Bloc, rpvec, cpvec, &xycomm, &zcomm, comm, f, c); 
 }
