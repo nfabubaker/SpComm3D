@@ -9,7 +9,7 @@ using namespace SpKernels;
 using namespace std;
 
 
-void setup_3dsddmm_expand(denseMatrix& Aloc, denseMatrix& Bloc, coo_mtx& Cloc, vector<int>& rpvec, vector<int>& cpvec, SparseComm<real_t>& comm_expand, SparseComm<real_t>& comm_reduce, MPI_Comm comm){
+void setup_3dsddmm_expand(denseMatrix& Aloc, denseMatrix& Bloc, coo_mtx& Cloc, vector<int>& rpvec, vector<int>& cpvec, SparseComm<real_t>& comm_expand,  MPI_Comm comm){
    
     int myrank, size, inDegree=0, outDegree=0;
     MPI_Comm_rank(comm, &myrank);
@@ -31,7 +31,7 @@ void setup_3dsddmm_expand(denseMatrix& Aloc, denseMatrix& Bloc, coo_mtx& Cloc, v
     totRecvCnt = accumulate(recvCount.begin(), recvCount.end(), totRecvCnt); totRecvCnt -= recvCount[myrank];
 
     /* exchange row/col IDs */
-    SparseComm<idx_t> esc; /* esc: short for expand setup comm */
+    SparseComm<idx_t> esc(2); /* esc: short for expand setup comm */
     for(int i = 0; i < size; ++i){ 
         if(sendCount[i] > 0 && i != myrank) esc.inDegree++;
         if(recvCount[i] > 0 && i != myrank) esc.outDegree++;
@@ -63,7 +63,7 @@ void setup_3dsddmm_expand(denseMatrix& Aloc, denseMatrix& Bloc, coo_mtx& Cloc, v
             esc.sendBuff.at(esc.sendDisp.at(ploc+1)++) = i;
         }
     }
-    esc.perform_sparse_comm(2);
+    esc.perform_sparse_comm();
 
     /* now recv from each processor available in recvBuff */
     idx_t f = Aloc.n;
@@ -71,6 +71,7 @@ void setup_3dsddmm_expand(denseMatrix& Aloc, denseMatrix& Bloc, coo_mtx& Cloc, v
     comm_expand.sendptr.resize(totSendCnt); 
     comm_expand.recvBuff.resize(totRecvCnt * f); 
     comm_expand.recvptr.resize(totRecvCnt); 
+    comm_expand.
     
     /* prepare expand sendbuff based on the row/col IDs I recv 
      * (what I send is what other processors tell me to send)*/
@@ -125,7 +126,7 @@ void setup_3dsddmm_reduce(coo_mtx& Cloc, SparseComm<real_t>& comm_reduce, MPI_Co
     }
     MPI_Alltoall(RecvCntPP.data(), 1, MPI_IDX_T, SendCntPP.data(),1,
             MPI_IDX_T, comm); 
-    SparseComm<idx_t> rsc; /* short for reduce setup comm */
+    SparseComm<idx_t> rsc(1); /* short for reduce setup comm */
     vector<int> gtlR(size, -1), gtlS(size, -1);
     idx_t totRecvCnt = 0, totSendCnt = 0;
     for(int i=0; i < size; ++i){
@@ -167,7 +168,7 @@ void setup_3dsddmm_reduce(coo_mtx& Cloc, SparseComm<real_t>& comm_reduce, MPI_Co
             rsc.sendBuff.at(rsc.sendDisp.at(gtlS.at(p)+1)++) = i;
 
     }
-    rsc.perform_sparse_comm(1);
+    rsc.perform_sparse_comm();
 
     comm_reduce.inSet.assign(rsc.outSet.begin(), rsc.outSet.end());
     comm_reduce.inDegree = rsc.outDegree;
@@ -197,9 +198,13 @@ void setup_3dsddmm_reduce(coo_mtx& Cloc, SparseComm<real_t>& comm_reduce, MPI_Co
     }
 }
 
-void SpKernels::setup_3dsddmm(coo_mtx& C, coo_mtx&Cloc, denseMatrix& Aloc, denseMatrix& Bloc, 
-        SparseComm<real_t>& comm_expand, SparseComm<real_t>& comm_reduce, MPI_Comm comm, idx_t f, int c){
+void SpKernels::setup_3dsddmm(coo_mtx& C, const idx_t f, const int c , const MPI_Comm comm, coo_mtx& Cloc, denseMatrix& Aloc, denseMatrix& Bloc, 
+        SparseComm<real_t>& comm_expand, SparseComm<real_t>& comm_reduce){
     MPI_Comm xycomm, zcomm;
     vector<int> rpvec(C.grows), cpvec(C.gcols); 
-    distribute3D(C, Cloc, Aloc, Bloc, rpvec, cpvec, &xycomm, &zcomm, comm, f, c); 
+    distribute3D(C, f, c, comm, Cloc, Aloc, Bloc, rpvec, cpvec,
+            &xycomm, &zcomm);
+    setup_3dsddmm_expand(Aloc, Bloc, Cloc, rpvec, cpvec, comm_expand, xycomm);
+    setup_3dsddmm_reduce(Cloc, comm_reduce, zcomm);
+
 }

@@ -53,6 +53,7 @@ namespace SpKernels {
                 enum comm_T {P2P, NEIGHBOR};
                 comm_T commT = NEIGHBOR;
                 SparseComm ();
+                SparseComm ( idx_t unitSize){this->dataUnitSize = unitSize;}
                 virtual ~SparseComm ();
                 std::vector<T *> get_sendptr(){return this->sendptr;}
                 void copy_to_sendbuff(){
@@ -98,7 +99,10 @@ namespace SpKernels {
             private:
         };
 
-    void setup_3dsddmm(coo_mtx& C, coo_mtx&Cloc, denseMatrix& Aloc, denseMatrix& Bloc, 
-            SparseComm<real_t>& comm_expand, SparseComm<real_t>& comm_reduce, MPI_Comm comm, idx_t f, int c);
-
+    /* 3d comm setup 
+     * 
+     * */
+void setup_3dsddmm(coo_mtx& C, const idx_t f, const int c , const MPI_Comm comm, coo_mtx& Cloc, denseMatrix& Aloc, denseMatrix& Bloc, 
+        SparseComm<real_t>& comm_expand, SparseComm<real_t>& comm_reduce);
 }
+
