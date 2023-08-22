@@ -3,9 +3,12 @@
 #include "basic.hpp"
 #include "Mesh3D.hpp"
 #include "mpi.h"
+#include "mpi_proto.h"
 #include <algorithm>
 #include <array>
 #include <cstddef>
+#include <cassert>
+
 
 
 
@@ -22,31 +25,33 @@ namespace SpKernels {
         int rank, size;
         MPI_Comm_size(comm, &size);
         MPI_Comm_rank(comm, &rank);
-        std::vector<idx_t> row_space(C.grows), col_space(C.gcols);
-        for(size_t i = 0; i < C.grows; ++i) row_space[i] = i;
-        for(size_t i = 0; i < C.gcols; ++i) col_space[i] = i;
-        std::random_shuffle(row_space.begin(), row_space.end());
-        std::random_shuffle(col_space.begin(), col_space.end());
-        /* assign Rows/Cols with RR */
-        for(size_t i = 0, p=0; i < C.grows; ++i)
-            rpvec2D[row_space[i]] = (p++) % mesh3d.getX(); 
-        for(size_t i = 0, p=0; i < C.gcols; ++i) 
-            cpvec2D[col_space[i]] = (p++) % mesh3d.getY(); 
+        std::vector<idx_t> frontMeshCnts;
+        if(rank == 0){
+            std::vector<idx_t> row_space(C.grows), col_space(C.gcols);
+            for(size_t i = 0; i < C.grows; ++i) row_space[i] = i;
+            for(size_t i = 0; i < C.gcols; ++i) col_space[i] = i;
+            std::random_shuffle(row_space.begin(), row_space.end());
+            std::random_shuffle(col_space.begin(), col_space.end());
+            /* assign Rows/Cols with RR */
+            for(size_t i = 0, p=0; i < C.grows; ++i)
+                rpvec2D[row_space[i]] = (p++) % mesh3d.getX(); 
+            for(size_t i = 0, p=0; i < C.gcols; ++i) 
+                cpvec2D[col_space[i]] = (p++) % mesh3d.getY(); 
 
-        std::vector<std::vector<idx_t>> mesh2DCnt(mesh3d.getX(),
-                std::vector<idx_t> (mesh3d.getY(), 0));
-        /* now rows/cols are divided, now distribute nonzeros */
-        /* first: count nnz per 2D block */
-        for(auto& t : C.elms){
-            mesh2DCnt[rpvec2D[t.row]][cpvec2D[t.col]]++; 
-        }
-        std::vector<idx_t> frontMeshCnts(size, 0);
-        for(size_t i = 0; i < mesh3d.getX(); ++i){
-            for (size_t j= 0; j < mesh3d.getY(); ++j){
-                frontMeshCnts[mesh3d.getRankFromCoords(i, j, 0)] 
-                    = mesh2DCnt[i][j];
+            std::vector<std::vector<idx_t>> mesh2DCnt(mesh3d.getX(),
+                    std::vector<idx_t> (mesh3d.getY(), 0));
+            /* now rows/cols are divided, now distribute nonzeros */
+            /* first: count nnz per 2D block */
+            for(auto& t : C.elms){
+                mesh2DCnt[rpvec2D[t.row]][cpvec2D[t.col]]++; 
             }
-
+            frontMeshCnts.resize(size, 0);
+            for(size_t i = 0; i < mesh3d.getX(); ++i){
+                for (size_t j= 0; j < mesh3d.getY(); ++j){
+                    frontMeshCnts[mesh3d.getRankFromCoords(i, j, 0)] 
+                        = mesh2DCnt[i][j];
+                }
+            }
         }
 
         /* communicate local and global dims */
@@ -54,19 +59,26 @@ namespace SpKernels {
         if(rank == 0) tarr[0] = C.grows; tarr[1] = C.gcols; tarr[2]=C.gnnz;
         MPI_Bcast(tarr.data(), 3, MPI_IDX_T, 0, comm); 
         Cloc.grows = tarr[0]; Cloc.gcols = tarr[1]; Cloc.gnnz = tarr[2];
-        
+        MPI_Bcast(rpvec2D.data(), Cloc.grows, MPI_INT, 0, comm);
+        MPI_Bcast(cpvec2D.data(), Cloc.gcols, MPI_INT, 0, comm);
         MPI_Scatter(frontMeshCnts.data(), 1, MPI_IDX_T, &Cloc.lnnz, 1,
                 MPI_IDX_T, 0, comm);
 
-        std::vector<int> tcnts(size,0);
-        std::vector<std::vector<triplet>> M(size);
-        for(int i=0; i < size; ++i) 
-            if(frontMeshCnts[i] > 0) 
-                M[i].resize(frontMeshCnts[i]);
-       
-        for(auto& t : C.elms){
-            int p = mesh3d.getRankFromCoords(rpvec2D[t.row], cpvec2D[t.col], 0);
-            M[p][tcnts[p]++] = t;
+        assert(Cloc.lnnz >= 0);
+        if(Cloc.lnnz > 0)Cloc.elms.resize(Cloc.lnnz);
+        std::vector<std::vector<triplet>> M;
+        if(rank == 0){
+            M.resize(size);
+            std::vector<int> tcnts(size,0);
+            for(int i=0; i < size; ++i) 
+                if(frontMeshCnts[i] > 0) 
+                    M[i].resize(frontMeshCnts[i]);
+
+            for(auto& t : C.elms){
+                int p = mesh3d.getRankFromCoords(rpvec2D[t.row], cpvec2D[t.col], 0);
+                M[p][tcnts[p]++] = t;
+            }
+            for(size_t i = 0; i < Cloc.lnnz; ++i) Cloc.elms.at(i) = M[0].at(i);
         }
 
 
@@ -76,7 +88,7 @@ namespace SpKernels {
         MPI_Datatype types[3] = {MPI_IDX_T, MPI_IDX_T, MPI_REAL_T};
         MPI_Datatype mpi_s_type;
         MPI_Aint offsets[3];
-        
+
         offsets[0] = offsetof(triplet, row);
         offsets[1] = offsetof(triplet, col);
         offsets[2] = offsetof(triplet, val);
@@ -85,39 +97,45 @@ namespace SpKernels {
         MPI_Type_commit(&mpi_s_type);
         /* send data to processors in the forntal mesh */
         if(rank == 0){ for(int i =0; i < size; ++i) if(frontMeshCnts[i] > 0){
-                    MPI_Send(M[i].data(), frontMeshCnts[i], mpi_s_type, i,
-                            777, comm); } }
+            MPI_Send(M[i].data(), frontMeshCnts[i], mpi_s_type, i,
+                    777, comm); } }
         else{ if(Cloc.lnnz > 0) MPI_Recv(Cloc.elms.data(), Cloc.lnnz, mpi_s_type, 0, 
-                    777, comm, MPI_STATUS_IGNORE); }
+                777, comm, MPI_STATUS_IGNORE); }
         /* splitt comm on the Z-axis */
         int zrank, zsize;
         MPI_Comm_split(comm, rank % mesh3d.getMZ(), rank, zcomm);
         MPI_Comm_rank( *zcomm, &zrank);
         MPI_Comm_size( *zcomm, &zsize);
         MPI_Bcast(&Cloc.lnnz, 1, MPI_IDX_T, 0, *zcomm);
+        if(zrank > 0) Cloc.elms.resize(Cloc.lnnz);
         MPI_Bcast(Cloc.elms.data(), Cloc.lnnz, mpi_s_type, 0, *zcomm);
+        Cloc.owners.resize(Cloc.lnnz);
         /* assign nnz owners per 2D block */
         if(zrank == 0 ){
             int t = 0;
             int *tarr;
             tarr = mesh3d.getAllCoords(rank);
             int X = tarr[0]; int Y = tarr[1];
-           for(size_t i = 0; i < Cloc.lnnz; ++i){
-                int pp = t++ % zrank;
-                Cloc.owners[i] = mesh3d.getRankFromCoords(X, Y, pp);
-           }
+            for(size_t i = 0; i < Cloc.lnnz; ++i){
+                /*                 int pp = t++ % zsize;
+                 *                 Cloc.owners[i] = mesh3d.getRankFromCoords(X, Y, pp);
+                 */
+                Cloc.owners[i] = t++ % zsize;
+            }
         }
         MPI_Bcast(Cloc.owners.data(), Cloc.lnnz, MPI_INT, 0, *zcomm);
+        for(size_t i = 0; i < Cloc.lnnz; ++i){ if(Cloc.owners[i] == zrank) Cloc.ownedNnz++;}
+
     }
 
 
     /* this function operates on 2D mesh (communicator split over z) */
     void distribute3D_AB(
-            
-/*             denseMatrix& A,
- *             denseMatrix& B,
-    We assume random A&B for now, therefore we only distribute indices
- */
+
+            /*             denseMatrix& A,
+             *             denseMatrix& B,
+             We assume random A&B for now, therefore we only distribute indices
+             */
             Mesh3D& mesh3d,
             denseMatrix& Aloc,
             denseMatrix& Bloc,
@@ -143,12 +161,13 @@ namespace SpKernels {
             for(size_t i=0; i < M; ++i){
                 int rowid2D = rpvec2D[i];
                 rpvec[i] = mesh3d.getRankFromCoords(rowid2D, 
-                        cntsPer2Drow[rowid2D]++ % Y, zcoord); 
+                        cntsPer2Drow[rowid2D]++ % Y, 0); 
             }
             for(size_t i=0; i < N; ++i){
                 int colid2D = cpvec2D[i];
-                cpvec[i] = mesh3d.getRankFromCoords(colid2D, 
-                        cntsPer2Dcol[colid2D]++ % X, zcoord); 
+                cpvec[i] = mesh3d.getRankFromCoords(
+                        cntsPer2Dcol[colid2D]++ % X,
+                        colid2D, 0); 
             }
 
         }
@@ -176,7 +195,7 @@ namespace SpKernels {
         int myrank, size;
         MPI_Comm_size(world_comm, &size);
         MPI_Comm_rank(world_comm, &myrank);
-        std::array<int, 3> dims; dims[2] = c;
+        std::array<int, 3> dims = {0,0,c};
         MPI_Dims_create(size, 3, dims.data());
         Mesh3D mesh3d(dims[0], dims[1], dims[2], world_comm);
         idx_t floc = f / mesh3d.getZ();
@@ -192,5 +211,7 @@ namespace SpKernels {
         /* distribute Aloc and Bloc  */
         distribute3D_AB(mesh3d, Aloc, Bloc, rpvec2D, cpvec2D, rpvec, cpvec,
                 Cloc, f, color, *xycomm); 
+        for(size_t i = 0; i < Cloc.grows; ++i) assert(rpvec[i] >= 0 && rpvec[i] <= size/mesh3d.getZ());
+        for(size_t i = 0; i < Cloc.gcols; ++i) assert(cpvec[i] >= 0 && cpvec[i] <= size/mesh3d.getZ());
     }
 }

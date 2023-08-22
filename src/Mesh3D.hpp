@@ -26,7 +26,7 @@ namespace SpKernels{
                 this->Y = Y; this->MY = X;
                 this->Z = Z; this->MZ = MY * Y;
             }
-            virtual ~Mesh3D ();
+            virtual ~Mesh3D (){}
             int getX(){return X;}
             int getY(){return Y;}
             int getZ(){return Z;}

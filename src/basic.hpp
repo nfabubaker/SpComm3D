@@ -4,6 +4,10 @@
 #include <vector>
 #include <mpi.h>
 #include <cstdint>
+#include <iostream>
+#include <unordered_set>
+
+
 
 #define idx_t uint32_t
 #define real_t double
@@ -33,6 +37,32 @@ namespace SpKernels {
         idx_t lrows, lcols, lnnz, ownedNnz, grows, gcols, gnnz;
         std::vector<int> owners; /* owner per local nnz */
         std::vector<triplet> elms;
+        void addEntry(idx_t row, idx_t col, real_t val){
+            triplet entry = {row, col, val};
+            this->elms.push_back(entry);
+        }
+
+        void printMatrix(){
+            for (const triplet& t : elms) 
+                std::cout << t.row << " " << t.col << " " << t.val << std::endl; 
+        }
+        void self_generate_random(idx_t nnz){
+            srand(static_cast<unsigned int>(time(nullptr)));
+            std::unordered_set<idx_t> usedIndices;
+
+            for (int i = 0; i < nnz; ++i) {
+                int row, col;
+                do {
+                    row = rand() % this->grows;
+                    col = rand() % this->gcols;
+                } while (usedIndices.count(row * gcols + col) > 0); // Check for duplicate indices
+
+                usedIndices.insert(row * gcols + col);
+
+                real_t value = static_cast<real_t>(rand()) / RAND_MAX; // Random value between 0 and 1
+                this->addEntry(row, col, value);
+            }
+        }
     } coo_mtx;
 
 
@@ -45,16 +75,18 @@ namespace SpKernels {
                 int inDegree, outDegree;
                 idx_t dataUnitSize;
                 std::vector<int> inSet, outSet;
-                std::vector<idx_t> sendCount, recvCount;
-                std::vector<idx_t> sendDisp, recvDisp;
+                std::vector<int> sendCount, recvCount;
+                std::vector<int> sendDisp, recvDisp;
                 std::vector<T> sendBuff, recvBuff;  
                 /* csr-like DS to facilitate moving data between send/recv buffers and local storage */ 
                 std::vector<T *> sendptr, recvptr;
                 enum comm_T {P2P, NEIGHBOR};
-                comm_T commT = NEIGHBOR;
-                SparseComm ();
-                SparseComm ( idx_t unitSize){this->dataUnitSize = unitSize;}
-                virtual ~SparseComm ();
+                comm_T commT = P2P;
+                SparseComm () : SparseComm(1){}
+                SparseComm ( idx_t unitSize): dataUnitSize(unitSize){
+                    inDegree = 0; outDegree = 0;
+                }
+                virtual ~SparseComm (){MPI_Comm_free(&this->commP); if(commT == NEIGHBOR) MPI_Comm_free(&this->commN); }
                 std::vector<T *> get_sendptr(){return this->sendptr;}
                 void copy_to_sendbuff(){
                     /* copy to sendBuff */
@@ -102,7 +134,7 @@ namespace SpKernels {
     /* 3d comm setup 
      * 
      * */
-void setup_3dsddmm(coo_mtx& C, const idx_t f, const int c , const MPI_Comm comm, coo_mtx& Cloc, denseMatrix& Aloc, denseMatrix& Bloc, 
-        SparseComm<real_t>& comm_expand, SparseComm<real_t>& comm_reduce);
+    void setup_3dsddmm(coo_mtx& C, const idx_t f, const int c , const MPI_Comm comm, coo_mtx& Cloc, denseMatrix& Aloc, denseMatrix& Bloc, 
+            SparseComm<real_t>& comm_expand, SparseComm<real_t>& comm_reduce);
 }
 
