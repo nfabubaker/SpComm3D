@@ -74,11 +74,16 @@ namespace SpKernels {
                 if(frontMeshCnts[i] > 0) 
                     M[i].resize(frontMeshCnts[i]);
 
+            C.printMatrix();
             for(auto& t : C.elms){
                 int p = mesh3d.getRankFromCoords(rpvec2D[t.row], cpvec2D[t.col], 0);
                 M[p][tcnts[p]++] = t;
             }
             for(size_t i = 0; i < Cloc.lnnz; ++i) Cloc.elms.at(i) = M[0].at(i);
+            std::cout <<" --- Cloc ----" << std::endl;
+            Cloc.printMatrix();
+
+
         }
 
 
@@ -125,6 +130,12 @@ namespace SpKernels {
         }
         MPI_Bcast(Cloc.owners.data(), Cloc.lnnz, MPI_INT, 0, *zcomm);
         for(size_t i = 0; i < Cloc.lnnz; ++i){ if(Cloc.owners[i] == zrank) Cloc.ownedNnz++;}
+        Cloc.gtlR.resize(Cloc.grows, -1); Cloc.gtlC.resize(Cloc.gcols, -1);
+        Cloc.lrows = 0; Cloc.lcols = 0;
+        for(size_t i = 0; i < Cloc.lnnz; ++i){
+            if( Cloc.gtlR[Cloc.elms.at(i).row] == -1) Cloc.gtlR[Cloc.elms.at(i).row] = Cloc.lrows++;
+            if( Cloc.gtlC[Cloc.elms.at(i).col] == -1) Cloc.gtlC[Cloc.elms.at(i).col] = Cloc.lcols++;
+        }
 
     }
 
@@ -143,14 +154,12 @@ namespace SpKernels {
             std::vector<int>& cpvec2D,
             std::vector<int>& rpvec,
             std::vector<int>& cpvec,
-            const coo_mtx& Cloc,
+            coo_mtx& Cloc,
             const idx_t f,
             int zcoord,
             MPI_Comm comm)
     {
         idx_t M = Cloc.grows, N = Cloc.gcols;
-        Aloc.m = Cloc.grows; Aloc.n = f;
-        Bloc.m = Cloc.gcols; Bloc.n = f;
         int rank, size;
         MPI_Comm_rank( comm, &rank);
         MPI_Comm_size( comm, &size);
@@ -173,14 +182,12 @@ namespace SpKernels {
         }
         MPI_Bcast(rpvec.data(), M, MPI_INT, 0, comm);
         MPI_Bcast(cpvec.data(), N, MPI_INT, 0, comm);
-        Aloc.m = 0; Aloc.n = f;
-        Bloc.m = 0; Bloc.n = f;
-        for(size_t i = 0; i < M; ++i) if(rpvec[i] == mesh3d.getRank())
-            Aloc.m++;
-        for(size_t i = 0; i < N; ++i) if(cpvec[i] == mesh3d.getRank())
-            Bloc.m++;
-        Aloc.data.resize(Aloc.m * Aloc.n, 1);
-        Bloc.data.resize(Bloc.m * Bloc.n, 1);
+        /* update C info */
+        for(size_t i =0; i < Cloc.grows; ++i) 
+            if(rpvec.at(i) == rank && Cloc.gtlR.at(i) == -1) Cloc.gtlR.at(i) = Cloc.lrows++;
+        for(size_t i =0; i < Cloc.gcols; ++i) 
+            if(cpvec.at(i) == rank && Cloc.gtlC.at(i) == -1) Cloc.gtlC.at(i) = Cloc.lcols++;
+        
     }
 
 
@@ -205,12 +212,18 @@ namespace SpKernels {
         }
 
         distribute3D_C(C, mesh3d, Cloc, rpvec2D, cpvec2D, world_comm, zcomm);
+
+        /* prepare Aloc, Bloc according to local dims of Cloc */
         // split the 3D mesh communicator to 2D slices 
         int color = mesh3d.getRank() / mesh3d.getMZ();
         MPI_Comm_split(mesh3d.getComm(), color, mesh3d.getRank(), xycomm); 
         /* distribute Aloc and Bloc  */
         distribute3D_AB(mesh3d, Aloc, Bloc, rpvec2D, cpvec2D, rpvec, cpvec,
                 Cloc, f, color, *xycomm); 
+        Aloc.m = Cloc.lrows; Aloc.n = f/c;
+        Bloc.m = Cloc.lcols; Bloc.n = f/c;
+        Aloc.data.resize(Aloc.m * Aloc.n, myrank);
+        Bloc.data.resize(Bloc.m * Bloc.n, myrank);
         for(size_t i = 0; i < Cloc.grows; ++i) assert(rpvec[i] >= 0 && rpvec[i] <= size/mesh3d.getZ());
         for(size_t i = 0; i < Cloc.gcols; ++i) assert(cpvec[i] >= 0 && cpvec[i] <= size/mesh3d.getZ());
     }

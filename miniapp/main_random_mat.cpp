@@ -3,6 +3,7 @@
 #include <sys/types.h>
 #include <vector>
 #include "../src/basic.hpp"
+#include "mpi_proto.h"
 
 
 
@@ -16,16 +17,15 @@ void communicate_pre(SparseComm<real_t> &ch){
     ch.copy_from_recvbuff();
 }
 
-void communicate_post(SparseComm<real_t> &ch, idx_t lnnz){
+void communicate_post(SparseComm<real_t> &ch, coo_mtx& Cloc){
     ch.copy_to_sendbuff();
     /* perform sparse send/recv */
     ch.perform_sparse_comm();
     /* reduce from recvBuff to Cloc */
-    std::vector<real_t> reduced_vals(lnnz, 0.0);
-    for(int i = 0; i < ch.inDegree; ++i){
-        for(size_t j=0; j < ch.recvCount[i]; ++j){
-            
-        }
+    ch.SUM_from_recvbuff();
+    for(size_t i = 0; i < Cloc.ownedNnz; ++i){
+        idx_t lidx = Cloc.otl[i];
+        Cloc.elms[lidx].val *= Cloc.owned[i];
     }
 
 
@@ -37,10 +37,14 @@ void multiply(denseMatrix &Aloc, denseMatrix &Bloc, coo_mtx &Cloc){
         idx_t row, col;
         row = Cloc.elms[i].row;
         col = Cloc.elms[i].col;
-        real_t const *Ap = Aloc.data.data() + (row * f); real_t const *Bp = Bloc.data.data()+(col*f);
+/*         const real_t *Ap = Aloc.data.data() + (row * f); const real_t *Bp = Bloc.data.data()+(col*f);
+ */
         real_t vp =0.0;
-        for (int j = 0; j < f; j++){ vp += Ap[j]*Bp[j]; ++Ap; ++Bp;}
-        Cloc.elms[i].val *= vp; 
+        for (idx_t j = 0; j < f; j++){
+            //vp += Ap[j]*Bp[j]; ++Ap; ++Bp;
+            vp += Aloc.at(row, j) * Bloc.at(col, j);
+        }
+        Cloc.elms.at(i).val *= vp; 
     }
 }
 
@@ -64,9 +68,40 @@ int main(int argc, char *argv[])
             C.self_generate_random(1000);
         setup_3dsddmm(C,f,c, comm, Cloc, Aloc, Bloc,  comm_expand, comm_reduce);
     }
+
+    /* print A and B before & after comm: */
+    if(rank == 0){
+        std::cout << "A:" << std::endl;
+        Aloc.printMatrix();
+        std::cout << "B:" << std::endl;
+        Bloc.printMatrix();
+    }
+    MPI_Barrier(MPI_COMM_WORLD);
     communicate_pre(comm_expand);
+    MPI_Barrier(MPI_COMM_WORLD);
+    if(rank == 0){
+        std::cout << "Aloc:" << std::endl;
+        Aloc.printMatrix();
+        std::cout << "Bloc:" << std::endl;
+        Bloc.printMatrix();
+        std::cout << "Cloc:" << std::endl;
+        Cloc.printMatrix();
+    }
+    MPI_Barrier(MPI_COMM_WORLD);
     multiply(Aloc, Bloc, Cloc);
-    communicate_post(comm_reduce, Cloc.lnnz);
+    MPI_Barrier(MPI_COMM_WORLD);
+    if(rank == 0){
+        std::cout << "Cloc after comp:" << std::endl;
+        Cloc.printMatrix();
+    }
+    MPI_Barrier(MPI_COMM_WORLD);
+    communicate_post(comm_reduce, Cloc);
+    MPI_Barrier(MPI_COMM_WORLD);
+    if(rank == 0){
+        std::cout << "Cloc after reduce:" << std::endl;
+        Cloc.printMatrix();
+    }
+    MPI_Barrier(MPI_COMM_WORLD);
 
     return 0;
 }
