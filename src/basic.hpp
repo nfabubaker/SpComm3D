@@ -140,14 +140,17 @@ namespace SpKernels {
                     if(commT == P2P){ 
                         if(commP == MPI_COMM_NULL) goto ERR_EXIT;
                         int i,j;
+                        MPI_Request *rqsts = new MPI_Request[inDegree];
+                        for(i =0; i < inDegree; ++i)
+                            MPI_Irecv(recvBuff.data() + recvDisp[i],
+                                    recvCount[i], mpi_get_type(), inSet[i] ,
+                                    77, commP, &rqsts[i]);
                         for(i =0; i < outDegree; ++i) 
                             MPI_Send(sendBuff.data() + sendDisp[i],
                                     sendCount[i], mpi_get_type(), outSet[i] ,
                                     77, commP);
-                        for(i =0; i < inDegree; ++i)
-                            MPI_Recv(recvBuff.data() + recvDisp[i],
-                                    recvCount[i], mpi_get_type(), inSet[i] ,
-                                    77, commP, MPI_STATUS_IGNORE);
+                        MPI_Waitall(inDegree, rqsts, MPI_STATUSES_IGNORE);
+                        delete [] rqsts;
                     }
                     else if (commT == NEIGHBOR){
                         if(commN == MPI_COMM_NULL) goto ERR_EXIT;

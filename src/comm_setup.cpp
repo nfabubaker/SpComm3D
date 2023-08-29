@@ -256,7 +256,7 @@ void localize_C_indices(coo_mtx& Cloc){
 void SpKernels::setup_3dsddmm(coo_mtx& C, const idx_t f, const int c , const MPI_Comm comm, coo_mtx& Cloc, denseMatrix& Aloc, denseMatrix& Bloc, 
         SparseComm<real_t>& comm_expand, SparseComm<real_t>& comm_reduce){
     MPI_Comm xycomm, zcomm;
-    vector<int> rpvec(C.grows), cpvec(C.gcols); 
+    vector<int> rpvec, cpvec; 
     distribute3D(C, f, c, comm, Cloc, Aloc, Bloc, rpvec, cpvec,
             &xycomm, &zcomm);
     setup_3dsddmm_expand(Aloc, Bloc, Cloc, rpvec, cpvec, comm_expand, xycomm);

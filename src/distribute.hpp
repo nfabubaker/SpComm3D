@@ -27,6 +27,7 @@ namespace SpKernels {
         MPI_Comm_rank(comm, &rank);
         std::vector<idx_t> frontMeshCnts;
         if(rank == 0){
+            rpvec2D.resize(C.grows); cpvec2D.resize(C.gcols);
             std::vector<idx_t> row_space(C.grows), col_space(C.gcols);
             for(size_t i = 0; i < C.grows; ++i) row_space[i] = i;
             for(size_t i = 0; i < C.gcols; ++i) col_space[i] = i;
@@ -59,6 +60,7 @@ namespace SpKernels {
         if(rank == 0) tarr[0] = C.grows; tarr[1] = C.gcols; tarr[2]=C.gnnz;
         MPI_Bcast(tarr.data(), 3, MPI_IDX_T, 0, comm); 
         Cloc.grows = tarr[0]; Cloc.gcols = tarr[1]; Cloc.gnnz = tarr[2];
+        if(rank!=0){ rpvec2D.resize(Cloc.grows); cpvec2D.resize(Cloc.gcols);}
         MPI_Bcast(rpvec2D.data(), Cloc.grows, MPI_INT, 0, comm);
         MPI_Bcast(cpvec2D.data(), Cloc.gcols, MPI_INT, 0, comm);
         MPI_Scatter(frontMeshCnts.data(), 1, MPI_IDX_T, &Cloc.lnnz, 1,
@@ -74,14 +76,11 @@ namespace SpKernels {
                 if(frontMeshCnts[i] > 0) 
                     M[i].resize(frontMeshCnts[i]);
 
-            C.printMatrix();
             for(auto& t : C.elms){
                 int p = mesh3d.getRankFromCoords(rpvec2D[t.row], cpvec2D[t.col], 0);
                 M[p][tcnts[p]++] = t;
             }
             for(size_t i = 0; i < Cloc.lnnz; ++i) Cloc.elms.at(i) = M[0].at(i);
-            std::cout <<" --- Cloc ----" << std::endl;
-            Cloc.printMatrix();
 
 
         }
@@ -101,7 +100,7 @@ namespace SpKernels {
                 &mpi_s_type);
         MPI_Type_commit(&mpi_s_type);
         /* send data to processors in the forntal mesh */
-        if(rank == 0){ for(int i =0; i < size; ++i) if(frontMeshCnts[i] > 0){
+        if(rank == 0){ for(int i =1; i < size; ++i) if(frontMeshCnts[i] > 0){
             MPI_Send(M[i].data(), frontMeshCnts[i], mpi_s_type, i,
                     777, comm); } }
         else{ if(Cloc.lnnz > 0) MPI_Recv(Cloc.elms.data(), Cloc.lnnz, mpi_s_type, 0, 
@@ -195,7 +194,7 @@ namespace SpKernels {
             denseMatrix& Bloc, std::vector<int>& rpvec, 
             std::vector<int>& cpvec, MPI_Comm* xycomm, MPI_Comm* zcomm ){
 
-        std:: vector<int> rpvec2D(C.grows), cpvec2D(C.gcols);
+        std:: vector<int> rpvec2D, cpvec2D;
         /*
          * Distribute C and fill rpvec2D, cpvec2D
          */
@@ -212,11 +211,12 @@ namespace SpKernels {
         }
 
         distribute3D_C(C, mesh3d, Cloc, rpvec2D, cpvec2D, world_comm, zcomm);
+        rpvec.resize(Cloc.grows); cpvec.resize(Cloc.gcols);
 
         /* prepare Aloc, Bloc according to local dims of Cloc */
         // split the 3D mesh communicator to 2D slices 
-        int color = mesh3d.getRank() / mesh3d.getMZ();
-        MPI_Comm_split(mesh3d.getComm(), color, mesh3d.getRank(), xycomm); 
+        int color = myrank / mesh3d.getMZ();
+        MPI_Comm_split(world_comm, color, myrank, xycomm); 
         /* distribute Aloc and Bloc  */
         distribute3D_AB(mesh3d, Aloc, Bloc, rpvec2D, cpvec2D, rpvec, cpvec,
                 Cloc, f, color, *xycomm); 

@@ -1,9 +1,12 @@
+#include <cstdlib>
 #include <stdlib.h>
 #include <mpi.h>
 #include <sys/types.h>
 #include <vector>
-#include "basic.hpp"
-#include "mm.hpp"
+#include "../src/basic.hpp"
+#include "../src/mm.hpp"
+#include <getopt.h>
+
 
 
 
@@ -17,20 +20,20 @@ void communicate_pre(SparseComm<real_t> &ch){
     ch.copy_from_recvbuff();
 }
 
-void communicate_post(SparseComm<real_t> &ch, idx_t lnnz){
+void communicate_post(SparseComm<real_t> &ch, coo_mtx& Cloc){
     ch.copy_to_sendbuff();
     /* perform sparse send/recv */
     ch.perform_sparse_comm();
     /* reduce from recvBuff to Cloc */
-    vector<real_t> reduced_vals(lnnz, 0.0);
-    for(int i = 0; i < ch.inDegree; ++i){
-        for(size_t j=0; j < ch.recvCount[i]; ++j){
-            
-        }
+    ch.SUM_from_recvbuff();
+    for(size_t i = 0; i < Cloc.ownedNnz; ++i){
+        idx_t lidx = Cloc.otl[i];
+        Cloc.elms[lidx].val *= Cloc.owned[i];
     }
 
 
 }
+
 
 void multiply(denseMatrix &Aloc, denseMatrix &Bloc, coo_mtx &Cloc){
     idx_t f = Aloc.n;
@@ -38,13 +41,89 @@ void multiply(denseMatrix &Aloc, denseMatrix &Bloc, coo_mtx &Cloc){
         idx_t row, col;
         row = Cloc.elms[i].row;
         col = Cloc.elms[i].col;
-        real_t const *Ap = Aloc.data.data() + (row * f); real_t const *Bp = Bloc.data.data()+(col*f);
+/*         const real_t *Ap = Aloc.data.data() + (row * f); const real_t *Bp = Bloc.data.data()+(col*f);
+ */
         real_t vp =0.0;
-        for (int j = 0; j < f; j++){ vp += Ap[j]*Bp[j]; ++Ap; ++Bp;}
-        Cloc.elms[i].val *= vp; 
+        for (idx_t j = 0; j < f; j++){
+            //vp += Ap[j]*Bp[j]; ++Ap; ++Bp;
+            vp += Aloc.at(row, j) * Bloc.at(col, j);
+        }
+        Cloc.elms.at(i).val *= vp; 
     }
 }
 
+
+void process_args(int argc, char *argv[], idx_t& f, int& c, string& filename){
+   int choice;
+   while (1)
+   {
+       static struct option long_options[] =
+       {
+           /* Use flags like so:
+           {"verbose",	no_argument,	&verbose_flag, 'V'}*/
+           /* Argument styles: no_argument, required_argument, optional_argument */
+           {"version", no_argument,	0,	'v'},
+           {"help",	no_argument,	0,	'h'},
+           
+           {0,0,0,0}
+       };
+   
+       int option_index = 0;
+   
+       /* Argument parameters:
+           no_argument: " "
+           required_argument: ":"
+           optional_argument: "::" */
+   
+       choice = getopt_long( argc, argv, "vh:k:c:",
+                   long_options, &option_index);
+   
+       if (choice == -1)
+           break;
+   
+       switch( choice )
+       {
+           case 'k':
+               f = atoi(optarg);
+               break;
+           case 'c':
+               c = atoi(optarg);
+               break;
+           case 'v':
+               printf("3D SDDMM version 1.0\n");
+               break;
+           case 'h':
+               printf("3D SDDMM version 1.0\n");
+               printf("usage: sddmm [-k <k value>] [-c <c value] /path/to/matrix");
+               break;
+   
+           case '?':
+               /* getopt_long will have already printed an error */
+               break;
+   
+           default:
+               /* Not sure how to get here... */
+               exit( EXIT_FAILURE);
+       }
+   }
+   
+   /* Deal with non-option arguments here */
+   if ( optind < argc )
+   {
+       filename = argv[optind];
+/*        while ( optind < argc )
+ *        {
+ *            
+ *        }
+ */
+   }
+   else{
+       printf("usage: sddmm [-k <k value>] [-c <c value] /path/to/matrix");
+       exit(EXIT_FAILURE);
+   }
+   return;
+    
+}
 
 int main(int argc, char *argv[])
 {
@@ -55,18 +134,43 @@ int main(int argc, char *argv[])
     MPI_Comm_size(comm, &size);
     SparseComm<real_t> comm_expand;
     SparseComm<real_t> comm_reduce;
-    string filename = "smth";
+    
+    string filename;
+    idx_t f; int c;
+    process_args(argc, argv, f, c, filename);
     coo_mtx Cloc;
+    
     denseMatrix Aloc, Bloc;
     {
+        coo_mtx C;
         mm _mm(filename); 
-        coo_mtx C = _mm.read_mm(filename); 
-        setup_3dsddmm(C, Cloc, Aloc, Bloc,  comm_expand, comm_reduce, comm);
+        if(rank == 0)
+            C = _mm.read_mm(filename); 
+        MPI_Barrier(MPI_COMM_WORLD);
+        if(rank == 0) fprintf(stderr,"starting setup ...\n");;
+        MPI_Barrier(MPI_COMM_WORLD);
+        setup_3dsddmm(C,f,c, comm, Cloc, Aloc, Bloc,  comm_expand, comm_reduce);
     }
-    printf("%d", C.lcols);
+    MPI_Barrier(MPI_COMM_WORLD);
+    if(rank == 0) fprintf(stderr,"setup done\n");;
+    MPI_Barrier(MPI_COMM_WORLD);
     communicate_pre(comm_expand);
+    MPI_Barrier(MPI_COMM_WORLD);
+    if(rank == 0) fprintf(stderr,"pre-comm done\n");;
+    MPI_Barrier(MPI_COMM_WORLD);
     multiply(Aloc, Bloc, Cloc);
-    communicate_post(comm_reduce);
+    MPI_Barrier(MPI_COMM_WORLD);
+    if(rank == 0) fprintf(stderr,"mult done\n");;
+    MPI_Barrier(MPI_COMM_WORLD);
+    communicate_post(comm_reduce, Cloc);
+    MPI_Barrier(MPI_COMM_WORLD);
+    if(rank == 0){
+        std::cout << "Cloc after reduce:" << std::endl;
+        Cloc.printMatrix();
+    }
+
+
+    MPI_Barrier(MPI_COMM_WORLD);
 
     return 0;
 }
