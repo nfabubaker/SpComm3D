@@ -146,30 +146,16 @@ int main(int argc, char *argv[])
         mm _mm(filename); 
         if(rank == 0)
             C = _mm.read_mm(filename); 
-        MPI_Barrier(MPI_COMM_WORLD);
-        if(rank == 0) fprintf(stderr,"starting setup ...\n");;
-        MPI_Barrier(MPI_COMM_WORLD);
         setup_3dsddmm(C,f,c, comm, Cloc, Aloc, Bloc,  comm_expand, comm_reduce);
     }
-    MPI_Barrier(MPI_COMM_WORLD);
-    if(rank == 0) fprintf(stderr,"setup done\n");;
-    MPI_Barrier(MPI_COMM_WORLD);
     communicate_pre(comm_expand);
-    MPI_Barrier(MPI_COMM_WORLD);
-    if(rank == 0) fprintf(stderr,"pre-comm done\n");;
-    MPI_Barrier(MPI_COMM_WORLD);
     multiply(Aloc, Bloc, Cloc);
-    MPI_Barrier(MPI_COMM_WORLD);
-    if(rank == 0) fprintf(stderr,"mult done\n");;
-    MPI_Barrier(MPI_COMM_WORLD);
     communicate_post(comm_reduce, Cloc);
     MPI_Barrier(MPI_COMM_WORLD);
     if(rank == 0){
         std::cout << "Cloc after reduce:" << std::endl;
         Cloc.printMatrix();
     }
-
-
     MPI_Barrier(MPI_COMM_WORLD);
 
     return 0;

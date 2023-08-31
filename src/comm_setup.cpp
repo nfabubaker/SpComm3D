@@ -264,3 +264,19 @@ void SpKernels::setup_3dsddmm(coo_mtx& C, const idx_t f, const int c , const MPI
     localize_C_indices(Cloc);
 
 }
+/* void SpKernels::setup_3dsddmm_bcast(coo_mtx& C, const idx_t f, const int c , const MPI_Comm comm, coo_mtx& Cloc, denseMatrix& Aloc, denseMatrix& Bloc, 
+ *         DenseComm& comm_pre, DenseComm& comm_post){
+ *     MPI_Comm xycomm, zcomm;
+ *     vector<int> rpvec, cpvec; 
+ *     distribute3D_Bcast(C, f, c, comm, Cloc, Aloc, Bloc, rpvec, cpvec,
+ *             &xycomm, &zcomm);
+ *     MPI_Comm xcomm, ycomm;
+ *     int myxyrank;
+ *     MPI_Cart
+ *     MPI_Comm_rank(xycomm, &myxyrank);
+ *     MPI_Comm_split(xycomm, myxyrank % );
+ *     
+ *     localize_C_indices(Cloc);
+ * 
+ * }
+ */

@@ -79,6 +79,27 @@ namespace SpKernels {
     } coo_mtx;
 
 
+    typedef struct _DenseComm{
+        MPI_Comm comm;
+        int OP; /*  0 = Bcast, 1- Allreduce */
+        real_t *bufferptr;
+        int outDegree;
+        std::vector<idx_t > bcastcnt;
+        std::vector<idx_t > bcastdisp;
+        std::vector<MPI_Request> rqsts;
+        void perform_dense_comm(){
+            if(this->OP == 0){/* bcast */
+                for(int i =0; i < outDegree; ++i)
+                    MPI_Ibcast(bufferptr + bcastdisp[i], bcastcnt[i], MPI_REAL_T, i,comm, &rqsts[i]);
+                MPI_Waitall(outDegree, rqsts.data(), MPI_STATUSES_IGNORE);
+            }
+
+
+        }
+
+    } DenseComm;
+
+
     template <typename T>
         class SparseComm
         {

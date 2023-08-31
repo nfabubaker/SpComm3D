@@ -181,11 +181,6 @@ namespace SpKernels {
         }
         MPI_Bcast(rpvec.data(), M, MPI_INT, 0, comm);
         MPI_Bcast(cpvec.data(), N, MPI_INT, 0, comm);
-        /* update C info */
-        for(size_t i =0; i < Cloc.grows; ++i) 
-            if(rpvec.at(i) == rank && Cloc.gtlR.at(i) == -1) Cloc.gtlR.at(i) = Cloc.lrows++;
-        for(size_t i =0; i < Cloc.gcols; ++i) 
-            if(cpvec.at(i) == rank && Cloc.gtlC.at(i) == -1) Cloc.gtlC.at(i) = Cloc.lcols++;
         
     }
 
@@ -217,14 +212,62 @@ namespace SpKernels {
         // split the 3D mesh communicator to 2D slices 
         int color = myrank / mesh3d.getMZ();
         MPI_Comm_split(world_comm, color, myrank, xycomm); 
+        int myxyrank;
+        MPI_Comm_rank(*xycomm, &myxyrank);  
         /* distribute Aloc and Bloc  */
         distribute3D_AB(mesh3d, Aloc, Bloc, rpvec2D, cpvec2D, rpvec, cpvec,
                 Cloc, f, color, *xycomm); 
+        /* update C info */
+        for(size_t i =0; i < Cloc.grows; ++i) 
+            if(rpvec.at(i) == myxyrank && Cloc.gtlR.at(i) == -1) Cloc.gtlR.at(i) = Cloc.lrows++;
+        for(size_t i =0; i < Cloc.gcols; ++i) 
+            if(cpvec.at(i) == myxyrank && Cloc.gtlC.at(i) == -1) Cloc.gtlC.at(i) = Cloc.lcols++;
         Aloc.m = Cloc.lrows; Aloc.n = f/c;
         Bloc.m = Cloc.lcols; Bloc.n = f/c;
         Aloc.data.resize(Aloc.m * Aloc.n, myrank);
         Bloc.data.resize(Bloc.m * Bloc.n, myrank);
         for(size_t i = 0; i < Cloc.grows; ++i) assert(rpvec[i] >= 0 && rpvec[i] <= size/mesh3d.getZ());
         for(size_t i = 0; i < Cloc.gcols; ++i) assert(cpvec[i] >= 0 && cpvec[i] <= size/mesh3d.getZ());
+    }
+
+    void distribute3D_Bcast(coo_mtx& C, idx_t f, int c, MPI_Comm world_comm, coo_mtx& Cloc, denseMatrix& Aloc, 
+            denseMatrix& Bloc, std::vector<int>& rpvec, 
+            std::vector<int>& cpvec, MPI_Comm* xycomm, MPI_Comm* zcomm ){
+        
+        std:: vector<int> rpvec2D, cpvec2D;
+        /*
+         * Distribute C and fill rpvec2D, cpvec2D
+         */
+        int myrank, size;
+        MPI_Comm_size(world_comm, &size);
+        MPI_Comm_rank(world_comm, &myrank);
+        std::array<int, 3> dims = {0,0,c};
+        MPI_Dims_create(size, 3, dims.data());
+        Mesh3D mesh3d(dims[0], dims[1], dims[2], world_comm);
+        idx_t floc = f / mesh3d.getZ();
+        if(f % mesh3d.getZ() > 0){
+            int myzcoord = mesh3d.getZCoord(mesh3d.getRank());
+            if(myzcoord < f%mesh3d.getZ()) ++floc;
+        }
+        distribute3D_C(C, mesh3d, Cloc, rpvec2D, cpvec2D, world_comm, zcomm);
+        rpvec.resize(Cloc.grows); cpvec.resize(Cloc.gcols);
+        /* prepare Aloc, Bloc according to local dims of Cloc */
+        // split the 3D mesh communicator to 2D slices 
+        int color = myrank / mesh3d.getMZ();
+        MPI_Comm_split(world_comm, color, myrank, xycomm); 
+        /* distribute Aloc and Bloc  */
+        distribute3D_AB(mesh3d, Aloc, Bloc, rpvec2D, cpvec2D, rpvec, cpvec,
+                Cloc, f, color, *xycomm); 
+        /* at this point, lrows should for p_ij should be the count of all rows 
+         * assigned to row p_(i,:) */
+        int myxcoord = mesh3d.getXCoord(myrank);
+        int myycoord = mesh3d.getYCoord(myrank);
+        Cloc.lrows = 0; Cloc.lcols = 0;
+        for(size_t i=0; i < Cloc.grows; ++i) if(mesh3d.getXCoord(rpvec[i]) == myxcoord) Cloc.lrows++;
+        for(size_t i=0; i < Cloc.gcols; ++i) if(mesh3d.getXCoord(cpvec[i]) == myycoord) Cloc.lcols++;
+        Aloc.m = Cloc.lrows; Aloc.n = f/c;
+        Bloc.m = Cloc.lcols; Bloc.n = f/c;
+        Aloc.data.resize(Aloc.m * Aloc.n, myrank);
+        Bloc.data.resize(Bloc.m * Bloc.n, myrank);
     }
 }
