@@ -15,16 +15,19 @@
 namespace SpKernels {
     void distribute3D_C(
             coo_mtx& C,
-            Mesh3D& mesh3d,
             coo_mtx& Cloc,
             std::vector<int>& rpvec2D,
             std::vector<int>& cpvec2D,
-            MPI_Comm comm,
+            MPI_Comm cartcomm,
             MPI_Comm *zcomm)
     {
-        int rank, size;
-        MPI_Comm_size(comm, &size);
-        MPI_Comm_rank(comm, &rank);
+        int rank, size, X,Y,Z;
+        std::array<int, 3> dims, t1, t2;
+        MPI_Comm_size(cartcomm, &size);
+        MPI_Comm_rank(cartcomm, &rank);
+    
+        MPI_Cart_get(cartcomm, 3, dims.data(), t1.data(), t2.data());
+        X = dims[0]; Y=dims[1]; Z=dims[2];
         std::vector<idx_t> frontMeshCnts;
         if(rank == 0){
             rpvec2D.resize(C.grows); cpvec2D.resize(C.gcols);
@@ -35,22 +38,23 @@ namespace SpKernels {
             std::random_shuffle(col_space.begin(), col_space.end());
             /* assign Rows/Cols with RR */
             for(size_t i = 0, p=0; i < C.grows; ++i)
-                rpvec2D[row_space[i]] = (p++) % mesh3d.getX(); 
+                rpvec2D[row_space[i]] = (p++) % X; 
             for(size_t i = 0, p=0; i < C.gcols; ++i) 
-                cpvec2D[col_space[i]] = (p++) % mesh3d.getY(); 
+                cpvec2D[col_space[i]] = (p++) % Y; 
 
-            std::vector<std::vector<idx_t>> mesh2DCnt(mesh3d.getX(),
-                    std::vector<idx_t> (mesh3d.getY(), 0));
+            std::vector<std::vector<idx_t>> mesh2DCnt(X,
+                    std::vector<idx_t> (Y, 0));
             /* now rows/cols are divided, now distribute nonzeros */
             /* first: count nnz per 2D block */
             for(auto& t : C.elms){
                 mesh2DCnt[rpvec2D[t.row]][cpvec2D[t.col]]++; 
             }
             frontMeshCnts.resize(size, 0);
-            for(size_t i = 0; i < mesh3d.getX(); ++i){
-                for (size_t j= 0; j < mesh3d.getY(); ++j){
-                    frontMeshCnts[mesh3d.getRankFromCoords(i, j, 0)] 
-                        = mesh2DCnt[i][j];
+            for(int i = 0; i < X; ++i){
+                for (int j= 0; j < Y; ++j){
+                    dims = {i, j, 0};
+                    int trank;MPI_Cart_rank(cartcomm, dims.data(), &trank);
+                    frontMeshCnts[trank] = mesh2DCnt[i][j];
                 }
             }
         }
@@ -58,13 +62,13 @@ namespace SpKernels {
         /* communicate local and global dims */
         std::array<idx_t, 3> tarr;
         if(rank == 0) tarr[0] = C.grows; tarr[1] = C.gcols; tarr[2]=C.gnnz;
-        MPI_Bcast(tarr.data(), 3, MPI_IDX_T, 0, comm); 
+        MPI_Bcast(tarr.data(), 3, MPI_IDX_T, 0, cartcomm); 
         Cloc.grows = tarr[0]; Cloc.gcols = tarr[1]; Cloc.gnnz = tarr[2];
         if(rank!=0){ rpvec2D.resize(Cloc.grows); cpvec2D.resize(Cloc.gcols);}
-        MPI_Bcast(rpvec2D.data(), Cloc.grows, MPI_INT, 0, comm);
-        MPI_Bcast(cpvec2D.data(), Cloc.gcols, MPI_INT, 0, comm);
+        MPI_Bcast(rpvec2D.data(), Cloc.grows, MPI_INT, 0, cartcomm);
+        MPI_Bcast(cpvec2D.data(), Cloc.gcols, MPI_INT, 0, cartcomm);
         MPI_Scatter(frontMeshCnts.data(), 1, MPI_IDX_T, &Cloc.lnnz, 1,
-                MPI_IDX_T, 0, comm);
+                MPI_IDX_T, 0, cartcomm);
 
         assert(Cloc.lnnz >= 0);
         if(Cloc.lnnz > 0)Cloc.elms.resize(Cloc.lnnz);
@@ -77,7 +81,9 @@ namespace SpKernels {
                     M[i].resize(frontMeshCnts[i]);
 
             for(auto& t : C.elms){
-                int p = mesh3d.getRankFromCoords(rpvec2D[t.row], cpvec2D[t.col], 0);
+                int p;
+                dims = {rpvec2D[t.row], cpvec2D[t.col], 0};
+                MPI_Cart_rank(cartcomm, dims.data(), &p);
                 M[p][tcnts[p]++] = t;
             }
             for(size_t i = 0; i < Cloc.lnnz; ++i) Cloc.elms.at(i) = M[0].at(i);
@@ -102,12 +108,14 @@ namespace SpKernels {
         /* send data to processors in the forntal mesh */
         if(rank == 0){ for(int i =1; i < size; ++i) if(frontMeshCnts[i] > 0){
             MPI_Send(M[i].data(), frontMeshCnts[i], mpi_s_type, i,
-                    777, comm); } }
+                    777, cartcomm); } }
         else{ if(Cloc.lnnz > 0) MPI_Recv(Cloc.elms.data(), Cloc.lnnz, mpi_s_type, 0, 
-                777, comm, MPI_STATUS_IGNORE); }
+                777, cartcomm, MPI_STATUS_IGNORE); }
         /* splitt comm on the Z-axis */
         int zrank, zsize;
-        MPI_Comm_split(comm, rank % mesh3d.getMZ(), rank, zcomm);
+        //MPI_Comm_split(cartcomm, rank % Z, rank, zcomm);
+        std::array<int, 3> remaindims = {false, false, true};
+        MPI_Cart_sub(cartcomm, remaindims.data(), zcomm); 
         MPI_Comm_rank( *zcomm, &zrank);
         MPI_Comm_size( *zcomm, &zsize);
         MPI_Bcast(&Cloc.lnnz, 1, MPI_IDX_T, 0, *zcomm);
@@ -117,13 +125,7 @@ namespace SpKernels {
         /* assign nnz owners per 2D block */
         if(zrank == 0 ){
             int t = 0;
-            int *tarr;
-            tarr = mesh3d.getAllCoords(rank);
-            int X = tarr[0]; int Y = tarr[1];
             for(size_t i = 0; i < Cloc.lnnz; ++i){
-                /*                 int pp = t++ % zsize;
-                 *                 Cloc.owners[i] = mesh3d.getRankFromCoords(X, Y, pp);
-                 */
                 Cloc.owners[i] = t++ % zsize;
             }
         }
@@ -146,7 +148,6 @@ namespace SpKernels {
              *             denseMatrix& B,
              We assume random A&B for now, therefore we only distribute indices
              */
-            Mesh3D& mesh3d,
             denseMatrix& Aloc,
             denseMatrix& Bloc,
             std::vector<int>& rpvec2D,
@@ -155,32 +156,33 @@ namespace SpKernels {
             std::vector<int>& cpvec,
             coo_mtx& Cloc,
             const idx_t f,
-            int zcoord,
-            MPI_Comm comm)
+            MPI_Comm cartXYcomm)
     {
         idx_t M = Cloc.grows, N = Cloc.gcols;
-        int rank, size;
-        MPI_Comm_rank( comm, &rank);
-        MPI_Comm_size( comm, &size);
+        int rank, size, X,Y;
+        std::array<int, 2> dims, t1, t2;
+        MPI_Comm_size(cartXYcomm, &size);
+        MPI_Comm_rank(cartXYcomm, &rank);
+        MPI_Cart_coords(cartXYcomm, rank, 2,dims.data()); 
+        MPI_Cart_get(cartXYcomm, 2, dims.data(), t1.data(), t2.data());
+        X = dims[0]; Y=dims[1]; 
         if(rank == 0){
-            int X = mesh3d.getX(), Y=mesh3d.getY();
             std::vector<size_t> cntsPer2Drow(X,0);
             std::vector<size_t> cntsPer2Dcol(Y,0);
             for(size_t i=0; i < M; ++i){
                 int rowid2D = rpvec2D[i];
-                rpvec[i] = mesh3d.getRankFromCoords(rowid2D, 
-                        cntsPer2Drow[rowid2D]++ % Y, 0); 
+                dims = {rowid2D, (int)cntsPer2Drow[rowid2D]++ % Y};
+                MPI_Cart_rank(cartXYcomm, dims.data(), &rpvec[i]); 
             }
             for(size_t i=0; i < N; ++i){
                 int colid2D = cpvec2D[i];
-                cpvec[i] = mesh3d.getRankFromCoords(
-                        cntsPer2Dcol[colid2D]++ % X,
-                        colid2D, 0); 
+                dims = {(int)cntsPer2Dcol[colid2D]++ % X, colid2D};
+                MPI_Cart_rank(cartXYcomm, dims.data(), &cpvec[i]); 
             }
 
         }
-        MPI_Bcast(rpvec.data(), M, MPI_INT, 0, comm);
-        MPI_Bcast(cpvec.data(), N, MPI_INT, 0, comm);
+        MPI_Bcast(rpvec.data(), M, MPI_INT, 0, cartXYcomm);
+        MPI_Bcast(cpvec.data(), N, MPI_INT, 0, cartXYcomm);
         
     }
 
@@ -197,37 +199,42 @@ namespace SpKernels {
         MPI_Comm_size(world_comm, &size);
         MPI_Comm_rank(world_comm, &myrank);
         std::array<int, 3> dims = {0,0,c};
+        std::array<int,3> zeroArr ={0,0,0};
+        std::array<int,3> tdims ={0,0,0};
         MPI_Dims_create(size, 3, dims.data());
-        Mesh3D mesh3d(dims[0], dims[1], dims[2], world_comm);
-        idx_t floc = f / mesh3d.getZ();
-        if(f % mesh3d.getZ() > 0){
-            int myzcoord = mesh3d.getZCoord(mesh3d.getRank());
-            if(myzcoord < f%mesh3d.getZ()) ++floc;
+        MPI_Comm cartcomm;
+        MPI_Cart_create(world_comm, 3, dims.data(), zeroArr.data(), 0, &cartcomm);   
+        int X = dims[0], Y = dims[1], Z = dims[2];
+        idx_t floc = f / Z;
+        if(f % Z > 0){
+            MPI_Cart_coords(cartcomm, myrank, 3, tdims.data());
+            int myzcoord = tdims[2];
+            if(myzcoord < f% Z) ++floc;
         }
 
-        distribute3D_C(C, mesh3d, Cloc, rpvec2D, cpvec2D, world_comm, zcomm);
+        distribute3D_C(C, Cloc, rpvec2D, cpvec2D, cartcomm, zcomm);
         rpvec.resize(Cloc.grows); cpvec.resize(Cloc.gcols);
 
         /* prepare Aloc, Bloc according to local dims of Cloc */
         // split the 3D mesh communicator to 2D slices 
-        int color = myrank / mesh3d.getMZ();
-        MPI_Comm_split(world_comm, color, myrank, xycomm); 
+        std::array<int, 3> remaindims = {true, true, false};
+        MPI_Cart_sub(cartcomm, remaindims.data(), xycomm); 
         int myxyrank;
         MPI_Comm_rank(*xycomm, &myxyrank);  
         /* distribute Aloc and Bloc  */
-        distribute3D_AB(mesh3d, Aloc, Bloc, rpvec2D, cpvec2D, rpvec, cpvec,
-                Cloc, f, color, *xycomm); 
+        distribute3D_AB(Aloc, Bloc, rpvec2D, cpvec2D, rpvec, cpvec,
+                Cloc, f,  *xycomm); 
         /* update C info */
         for(size_t i =0; i < Cloc.grows; ++i) 
             if(rpvec.at(i) == myxyrank && Cloc.gtlR.at(i) == -1) Cloc.gtlR.at(i) = Cloc.lrows++;
         for(size_t i =0; i < Cloc.gcols; ++i) 
             if(cpvec.at(i) == myxyrank && Cloc.gtlC.at(i) == -1) Cloc.gtlC.at(i) = Cloc.lcols++;
-        Aloc.m = Cloc.lrows; Aloc.n = f/c;
-        Bloc.m = Cloc.lcols; Bloc.n = f/c;
-        Aloc.data.resize(Aloc.m * Aloc.n, myrank);
-        Bloc.data.resize(Bloc.m * Bloc.n, myrank);
-        for(size_t i = 0; i < Cloc.grows; ++i) assert(rpvec[i] >= 0 && rpvec[i] <= size/mesh3d.getZ());
-        for(size_t i = 0; i < Cloc.gcols; ++i) assert(cpvec[i] >= 0 && cpvec[i] <= size/mesh3d.getZ());
+        Aloc.m = Cloc.lrows; Aloc.n = floc;
+        Bloc.m = Cloc.lcols; Bloc.n = floc;
+        Aloc.data.resize(Aloc.m * Aloc.n, myrank+1);
+        Bloc.data.resize(Bloc.m * Bloc.n, myrank+1);
+        for(size_t i = 0; i < Cloc.grows; ++i) assert(rpvec[i] >= 0 && rpvec[i] <= size/Z);
+        for(size_t i = 0; i < Cloc.gcols; ++i) assert(cpvec[i] >= 0 && cpvec[i] <= size/Z);
     }
 
     void distribute3D_Bcast(coo_mtx& C, idx_t f, int c, MPI_Comm world_comm, coo_mtx& Cloc, denseMatrix& Aloc, 
@@ -242,32 +249,52 @@ namespace SpKernels {
         MPI_Comm_size(world_comm, &size);
         MPI_Comm_rank(world_comm, &myrank);
         std::array<int, 3> dims = {0,0,c};
+        std::array<int,3> zeroArr ={0,0,0};
+        std::array<int,3> tdims ={0,0,0};
         MPI_Dims_create(size, 3, dims.data());
-        Mesh3D mesh3d(dims[0], dims[1], dims[2], world_comm);
-        idx_t floc = f / mesh3d.getZ();
-        if(f % mesh3d.getZ() > 0){
-            int myzcoord = mesh3d.getZCoord(mesh3d.getRank());
-            if(myzcoord < f%mesh3d.getZ()) ++floc;
+        MPI_Comm cartcomm;
+        MPI_Cart_create(world_comm, 3, dims.data(), zeroArr.data(), 0, &cartcomm);   
+        int X = dims[0], Y = dims[1], Z = dims[2];
+        idx_t floc = f / Z;
+        if(f % Z > 0){
+            MPI_Cart_coords(cartcomm, myrank, 3, tdims.data());
+            int myzcoord = tdims[2];
+            if(myzcoord < f% Z) ++floc;
         }
-        distribute3D_C(C, mesh3d, Cloc, rpvec2D, cpvec2D, world_comm, zcomm);
+        distribute3D_C(C, Cloc, rpvec2D, cpvec2D, cartcomm, zcomm);
         rpvec.resize(Cloc.grows); cpvec.resize(Cloc.gcols);
         /* prepare Aloc, Bloc according to local dims of Cloc */
         // split the 3D mesh communicator to 2D slices 
-        int color = myrank / mesh3d.getMZ();
-        MPI_Comm_split(world_comm, color, myrank, xycomm); 
+        std::array<int, 3> remaindims = {true, true, false};
+        MPI_Cart_sub(cartcomm, remaindims.data(), xycomm); 
+        int myxyrank;
+        MPI_Comm_rank(*xycomm, &myxyrank);  
         /* distribute Aloc and Bloc  */
-        distribute3D_AB(mesh3d, Aloc, Bloc, rpvec2D, cpvec2D, rpvec, cpvec,
-                Cloc, f, color, *xycomm); 
+        distribute3D_AB(Aloc, Bloc, rpvec2D, cpvec2D, rpvec, cpvec,
+                Cloc, f, *xycomm); 
         /* at this point, lrows should for p_ij should be the count of all rows 
          * assigned to row p_(i,:) */
-        int myxcoord = mesh3d.getXCoord(myrank);
-        int myycoord = mesh3d.getYCoord(myrank);
+        MPI_Cart_coords(*xycomm, myxyrank, 2, tdims.data());
+        int myxcoord = tdims[0];
+        int myycoord = tdims[1];
         Cloc.lrows = 0; Cloc.lcols = 0;
-        for(size_t i=0; i < Cloc.grows; ++i) if(mesh3d.getXCoord(rpvec[i]) == myxcoord) Cloc.lrows++;
-        for(size_t i=0; i < Cloc.gcols; ++i) if(mesh3d.getXCoord(cpvec[i]) == myycoord) Cloc.lcols++;
-        Aloc.m = Cloc.lrows; Aloc.n = f/c;
-        Bloc.m = Cloc.lcols; Bloc.n = f/c;
-        Aloc.data.resize(Aloc.m * Aloc.n, myrank);
-        Bloc.data.resize(Bloc.m * Bloc.n, myrank);
+        for(size_t i=0; i < Cloc.grows; ++i){
+            MPI_Cart_coords(*xycomm, rpvec[i], 2, tdims.data());
+            if(tdims[0] == myxcoord){ 
+                Cloc.ltgR.push_back(i);
+                Cloc.gtlR.at(i) = Cloc.lrows++;
+            }
+        }
+        for(size_t i=0; i < Cloc.gcols; ++i){ 
+            MPI_Cart_coords(*xycomm, cpvec[i], 2, tdims.data());
+            if(tdims[1] == myycoord){ 
+                Cloc.ltgC.push_back(i);
+                Cloc.gtlC.at(i) = Cloc.lcols++;
+            }
+        }
+        Aloc.m = Cloc.lrows; Aloc.n = floc;
+        Bloc.m = Cloc.lcols; Bloc.n = floc;
+        Aloc.data.resize(Aloc.m * Aloc.n, myrank+1);
+        Bloc.data.resize(Bloc.m * Bloc.n, myrank+1);
     }
 }

@@ -79,22 +79,33 @@ namespace SpKernels {
     } coo_mtx;
 
 
-    typedef struct _DenseComm{
-        MPI_Comm comm;
+    typedef struct _denseComm{
+        MPI_Comm commX, commY;
         int OP; /*  0 = Bcast, 1- Allreduce */
-        real_t *bufferptr;
-        int outDegree;
-        std::vector<idx_t > bcastcnt;
-        std::vector<idx_t > bcastdisp;
-        std::vector<MPI_Request> rqsts;
+        real_t *bufferptrX, *bufferptrY;
+        int outDegreeX, outDegreeY;
+        std::vector<idx_t > bcastXcnt, bcastYcnt, bcastXdisp, bcastYdisp;
+        std::vector<MPI_Request> rqstsX, rqstsY;
+        std::vector<real_t> reduceBuffer;
+        triplet *ClocPtr;
+        idx_t lnnz;
         void perform_dense_comm(){
+            std::vector<MPI_Status> sttsX(outDegreeX), sttsY(outDegreeY);
             if(this->OP == 0){/* bcast */
-                for(int i =0; i < outDegree; ++i)
-                    MPI_Ibcast(bufferptr + bcastdisp[i], bcastcnt[i], MPI_REAL_T, i,comm, &rqsts[i]);
-                MPI_Waitall(outDegree, rqsts.data(), MPI_STATUSES_IGNORE);
+                for(int i =0; i < outDegreeX; ++i)
+                    MPI_Ibcast(bufferptrX + bcastXdisp[i], bcastXcnt[i], MPI_REAL_T, i,commX, &rqstsX[i]);
+                for(int i =0; i < outDegreeY; ++i)
+                    MPI_Ibcast(bufferptrY + bcastYdisp[i], bcastYcnt[i], MPI_REAL_T, i,commY, &rqstsY[i]);
+                MPI_Waitall(outDegreeX, rqstsX.data(), sttsX.data());
+                MPI_Waitall(outDegreeY, rqstsY.data(), sttsY.data());
             }
-
-
+            else if (this->OP == 1){
+               for(size_t i = 0; i < lnnz; ++i )
+                   reduceBuffer[i]  = ClocPtr[i].val;
+               MPI_Allreduce(MPI_IN_PLACE, reduceBuffer.data(), lnnz, MPI_REAL_T, MPI_SUM, commX);
+               for(size_t i = 0; i < lnnz; ++i )
+                    ClocPtr[i].val = reduceBuffer[i];
+            }
         }
 
     } DenseComm;
@@ -229,5 +240,7 @@ ERR_EXIT:
      * */
     void setup_3dsddmm(coo_mtx& C, const idx_t f, const int c , const MPI_Comm comm, coo_mtx& Cloc, denseMatrix& Aloc, denseMatrix& Bloc, 
             SparseComm<real_t>& comm_expand, SparseComm<real_t>& comm_reduce);
+    void setup_3dsddmm_bcast(coo_mtx& C, const idx_t f, const int c , const MPI_Comm comm, coo_mtx& Cloc, denseMatrix& Aloc, denseMatrix& Bloc, 
+        DenseComm& comm_pre, DenseComm& comm_post);
 }
 

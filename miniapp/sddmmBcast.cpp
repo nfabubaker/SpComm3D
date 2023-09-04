@@ -132,59 +132,31 @@ int main(int argc, char *argv[])
     MPI_Comm comm = MPI_COMM_WORLD;
     MPI_Comm_rank(comm, &rank);
     MPI_Comm_size(comm, &size);
+    SparseComm<real_t> comm_expand;
+    SparseComm<real_t> comm_reduce;
+    
     string filename;
     idx_t f; int c;
     process_args(argc, argv, f, c, filename);
-    /* instance #1: sparse */
+    coo_mtx Cloc;
+    
+    denseMatrix Aloc, Bloc;
     {
-        SparseComm<real_t> comm_expand;
-        SparseComm<real_t> comm_reduce;
-        coo_mtx Cloc;
-        denseMatrix Aloc, Bloc;
-        {
-            coo_mtx C;
-            mm _mm(filename); 
-            if(rank == 0)
-                C = _mm.read_mm(filename); 
-            setup_3dsddmm(C,f,c, comm, Cloc, Aloc, Bloc,  comm_expand, comm_reduce);
-        }
-        communicate_pre(comm_expand);
-        multiply(Aloc, Bloc, Cloc);
-        communicate_post(comm_reduce, Cloc);
-        MPI_Barrier(MPI_COMM_WORLD);
-        if(rank == 0){
-            std::cout << "Cloc after reduce:" << std::endl;
-            Cloc.printMatrix();
-        }
-        MPI_Barrier(MPI_COMM_WORLD);
+        coo_mtx C;
+        mm _mm(filename); 
+        if(rank == 0)
+            C = _mm.read_mm(filename); 
+        setup_3dsddmm(C,f,c, comm, Cloc, Aloc, Bloc,  comm_expand, comm_reduce);
+    }
+    communicate_pre(comm_expand);
+    multiply(Aloc, Bloc, Cloc);
+    communicate_post(comm_reduce, Cloc);
+    MPI_Barrier(MPI_COMM_WORLD);
+    if(rank == 0){
+        std::cout << "Cloc after reduce:" << std::endl;
+        Cloc.printMatrix();
+    }
+    MPI_Barrier(MPI_COMM_WORLD);
 
-    }
-    /* instance #2: dense */
-    {
-        DenseComm comm_pre, comm_post;
-        coo_mtx Cloc;
-        denseMatrix Aloc, Bloc;
-        {
-            coo_mtx C;
-            mm _mm(filename); 
-            if(rank == 0)
-                C = _mm.read_mm(filename); 
-            setup_3dsddmm_bcast(C,f,c, comm, Cloc, Aloc, Bloc,  comm_pre, comm_post);
-        }
-        /* comm_pre */
-        comm_pre.perform_dense_comm();
-        multiply(Aloc, Bloc, Cloc);
-        comm_post.perform_dense_comm();
-        for(size_t i = 0; i < Cloc.ownedNnz; ++i){
-            idx_t lidx = Cloc.otl[i];
-            Cloc.elms[lidx].val *= Cloc.owned[i];
-        }
-        MPI_Barrier(MPI_COMM_WORLD);
-        if(rank == 0){
-            std::cout << "Cloc after reduce:" << std::endl;
-            Cloc.printMatrix();
-        }
-        MPI_Barrier(MPI_COMM_WORLD);
-    }
     return 0;
 }

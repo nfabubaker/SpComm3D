@@ -264,19 +264,88 @@ void SpKernels::setup_3dsddmm(coo_mtx& C, const idx_t f, const int c , const MPI
     localize_C_indices(Cloc);
 
 }
-/* void SpKernels::setup_3dsddmm_bcast(coo_mtx& C, const idx_t f, const int c , const MPI_Comm comm, coo_mtx& Cloc, denseMatrix& Aloc, denseMatrix& Bloc, 
- *         DenseComm& comm_pre, DenseComm& comm_post){
- *     MPI_Comm xycomm, zcomm;
- *     vector<int> rpvec, cpvec; 
- *     distribute3D_Bcast(C, f, c, comm, Cloc, Aloc, Bloc, rpvec, cpvec,
- *             &xycomm, &zcomm);
- *     MPI_Comm xcomm, ycomm;
- *     int myxyrank;
- *     MPI_Cart
- *     MPI_Comm_rank(xycomm, &myxyrank);
- *     MPI_Comm_split(xycomm, myxyrank % );
- *     
- *     localize_C_indices(Cloc);
- * 
- * }
- */
+void SpKernels::setup_3dsddmm_bcast(coo_mtx& C, const idx_t f, const int c , const MPI_Comm comm, coo_mtx& Cloc, denseMatrix& Aloc, denseMatrix& Bloc, 
+        DenseComm& comm_pre, DenseComm& comm_post){
+    MPI_Comm xycomm, zcomm;
+    vector<int> rpvec, cpvec; 
+    std::array<int, 2> dims, tarr1, tarr2;
+    distribute3D_Bcast(C, f, c, comm, Cloc, Aloc, Bloc, rpvec, cpvec,
+            &xycomm, &zcomm);
+    MPI_Comm xcomm, ycomm;
+    std::array<int, 2> remdim = {false, true};
+    MPI_Cart_sub(xycomm, remdim.data(), &xcomm); 
+    remdim = {true, false};
+    MPI_Cart_sub(xycomm, remdim.data(), &ycomm); 
+    MPI_Cart_get(xycomm, 2, dims.data(), tarr1.data(), tarr2.data()); 
+    int X = dims[0], Y = dims[1], myxcoord = tarr2[0], myycoord = tarr2[1];   
+    
+
+    /* setup Bcast comm */
+    comm_pre.OP = 0;
+    comm_pre.commX = xcomm; comm_pre.commY = ycomm;
+    comm_pre.rqstsX.resize(X); comm_pre.rqstsY.resize(Y);
+    comm_pre.outDegreeX = dims[1]; comm_pre.outDegreeY = dims[0]; 
+    comm_pre.bufferptrX = Aloc.data.data(); comm_pre.bufferptrY = Bloc.data.data();
+    comm_pre.bcastXcnt.resize(comm_pre.outDegreeX, 0); comm_pre.bcastYcnt.resize(comm_pre.outDegreeY,0);
+    comm_pre.bcastXdisp.resize(comm_pre.outDegreeX+2, 0); comm_pre.bcastYdisp.resize(comm_pre.outDegreeY+2,0);
+    vector<int> rpvecX(Aloc.m), cpvecY(Bloc.m);
+    idx_t tt = 0;
+    for(size_t i = 0; i < Cloc.grows; ++i){
+        /* first, identify if the row belongs to my group*/
+        MPI_Cart_coords(xycomm, rpvec[i], 2, tarr1.data());
+        if(tarr1[0]  == myxcoord){
+            rpvecX[tt++] = tarr1[1];
+            comm_pre.bcastXcnt[tarr1[1]]++;
+        }
+    }
+    tt = 0;
+    for(size_t i = 0; i < Cloc.gcols; ++i){
+        MPI_Cart_coords(xycomm, cpvec[i], 2, tarr1.data());
+        if(tarr1[1]  == myycoord){ 
+            cpvecY[tt++] = tarr1[0];
+            comm_pre.bcastYcnt[tarr1[0]]++;
+        }
+    }
+    for(size_t i = 2; i < X+2; ++i) {
+        comm_pre.bcastXdisp[i] = comm_pre.bcastXdisp[i-1] + comm_pre.bcastXcnt[i-2];} 
+    for(size_t i = 2; i < Y+2; ++i) {
+        comm_pre.bcastYdisp[i] = comm_pre.bcastYdisp[i-1] + comm_pre.bcastYcnt[i-2];} 
+    
+    vector<idx_t> mapA(Aloc.m), mapB(Bloc.m);
+    for (size_t i = 0; i < Aloc.m; ++i) mapA[i] = comm_pre.bcastXdisp[rpvecX[i]+1]++; 
+    for (size_t i = 0; i < Bloc.m; ++i) mapB[i] = comm_pre.bcastYdisp[cpvecY[i]+1]++; 
+    /* re-assign gtl and ltg in Cloc */
+    for (size_t i = 0; i < Cloc.grows; ++i)
+        if(Cloc.gtlR[i] != -1) Cloc.gtlR.at(i) = mapA[Cloc.gtlR.at(i)]; 
+    for (size_t i = 0; i < Cloc.gcols; ++i)
+        if(Cloc.gtlC[i] != -1) Cloc.gtlC.at(i) = mapB[Cloc.gtlC.at(i)]; 
+    
+    for(size_t i = 0; i < X; ++i) {
+        comm_pre.bcastXcnt[i] *= Aloc.n;
+        comm_pre.bcastXdisp[i] *= Aloc.n;
+    }
+    for(size_t i = 0; i < Y; ++i) {
+        comm_pre.bcastYcnt[i] *= Bloc.n;
+        comm_pre.bcastYdisp[i] *= Bloc.n;
+    }
+    /* now set up for Allreduce */
+    comm_post.commX = zcomm;
+    comm_post.OP = 1;
+    comm_post.ClocPtr = Cloc.elms.data();
+    comm_post.lnnz = Cloc.lnnz;
+    comm_post.reduceBuffer.resize(Cloc.lnnz);
+    Cloc.ownedNnz = 0;
+    int myzrank;
+    MPI_Comm_rank(zcomm, &myzrank);
+    for(size_t i = 0; i < Cloc.lnnz; ++i){
+        if(Cloc.owners[i] == myzrank){ 
+            Cloc.otl.push_back(i);
+            Cloc.ownedNnz++;
+            Cloc.owned.push_back(Cloc.elms[i].val);
+        }
+    }
+    
+    localize_C_indices(Cloc);
+
+}
+
