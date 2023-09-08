@@ -3,7 +3,6 @@
 #include "basic.hpp"
 #include "Mesh3D.hpp"
 #include "mpi.h"
-#include "mpi_proto.h"
 #include <algorithm>
 #include <array>
 #include <cstddef>

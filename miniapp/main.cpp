@@ -5,7 +5,10 @@
 #include <vector>
 #include "../src/basic.hpp"
 #include "../src/mm.hpp"
+#include "../src/comm_stats.hpp"
 #include <getopt.h>
+#include <chrono>
+
 
 
 
@@ -135,8 +138,12 @@ int main(int argc, char *argv[])
     string filename;
     idx_t f; int c;
     process_args(argc, argv, f, c, filename);
+    std::string::size_type const p(filename.find_last_of('.'));
+    std::string mtxName = filename.substr(0, p);
+    mtxName = mtxName.substr(mtxName.find_last_of("/\\") +1);
     /* instance #1: sparse */
     {
+        parallelTiming pt; 
         SparseComm<real_t> comm_expand;
         SparseComm<real_t> comm_reduce;
         coo_mtx Cloc;
@@ -146,21 +153,33 @@ int main(int argc, char *argv[])
             mm _mm(filename); 
             if(rank == 0)
                 C = _mm.read_mm(filename); 
-            setup_3dsddmm(C,f,c, comm, Cloc, Aloc, Bloc,  comm_expand, comm_reduce);
+             setup_3dsddmm(C,f,c, comm, Cloc, Aloc, Bloc,  comm_expand, comm_reduce);
         }
+        auto start = chrono::high_resolution_clock::now();
         communicate_pre(comm_expand);
+        auto stop = chrono::high_resolution_clock::now();
+        pt.comm1Time = chrono::duration_cast<chrono::milliseconds>(stop-start).count(); 
+        start = chrono::high_resolution_clock::now();
         multiply(Aloc, Bloc, Cloc);
+        stop = chrono::high_resolution_clock::now();
+        pt.compTime = chrono::duration_cast<chrono::milliseconds>(stop-start).count();
+        start = chrono::high_resolution_clock::now();
         communicate_post(comm_reduce, Cloc);
+        stop = chrono::high_resolution_clock::now();
+        pt.comm2Time = chrono::duration_cast<chrono::milliseconds>(stop-start).count();
+/*         MPI_Barrier(MPI_COMM_WORLD);
+ *         if(rank == 0){
+ *             std::cout << "Cloc after reduce:" << std::endl;
+ *             Cloc.printMatrix();
+ *         }
+ */
         MPI_Barrier(MPI_COMM_WORLD);
-        if(rank == 0){
-            std::cout << "Cloc after reduce:" << std::endl;
-            Cloc.printMatrix();
-        }
-        MPI_Barrier(MPI_COMM_WORLD);
-
+        print_comm_stats_sparse(mtxName, comm_expand, f, c, pt, MPI_COMM_WORLD);
+        print_comm_stats_sparse(mtxName, comm_reduce, f, c, pt, MPI_COMM_WORLD);
     }
     /* instance #2: dense */
     {
+        parallelTiming pt;
         DenseComm comm_pre, comm_post;
         coo_mtx Cloc;
         denseMatrix Aloc, Bloc;
@@ -172,19 +191,32 @@ int main(int argc, char *argv[])
             setup_3dsddmm_bcast(C,f,c, comm, Cloc, Aloc, Bloc,  comm_pre, comm_post);
         }
         /* comm_pre */
+        auto start = chrono::high_resolution_clock::now();
         comm_pre.perform_dense_comm();
+        auto stop = chrono::high_resolution_clock::now();
+        pt.comm1Time = chrono::duration_cast<chrono::milliseconds>(stop-start).count(); 
+        start = chrono::high_resolution_clock::now();
         multiply(Aloc, Bloc, Cloc);
+        stop = chrono::high_resolution_clock::now();
+        pt.compTime = chrono::duration_cast<chrono::milliseconds>(stop-start).count(); 
+        start = chrono::high_resolution_clock::now();
         comm_post.perform_dense_comm();
+        stop = chrono::high_resolution_clock::now();
+        pt.comm2Time = chrono::duration_cast<chrono::milliseconds>(stop-start).count(); 
         for(size_t i = 0; i < Cloc.ownedNnz; ++i){
             idx_t lidx = Cloc.otl[i];
             Cloc.elms[lidx].val *= Cloc.owned[i];
         }
+/*         MPI_Barrier(MPI_COMM_WORLD);
+ *         if(rank == 0){
+ *             std::cout << "Cloc after reduce:" << std::endl;
+ *             Cloc.printMatrix();
+ *         }
+ */
         MPI_Barrier(MPI_COMM_WORLD);
-        if(rank == 0){
-            std::cout << "Cloc after reduce:" << std::endl;
-            Cloc.printMatrix();
-        }
-        MPI_Barrier(MPI_COMM_WORLD);
+        print_comm_stats_dense(mtxName, comm_pre, f, c, pt, MPI_COMM_WORLD); 
+        print_comm_stats_dense(mtxName, comm_post, f, c, pt, MPI_COMM_WORLD); 
     }
+    MPI_Finalize();
     return 0;
 }

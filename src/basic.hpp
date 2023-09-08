@@ -90,8 +90,8 @@ namespace SpKernels {
         triplet *ClocPtr;
         idx_t lnnz;
         void perform_dense_comm(){
-            std::vector<MPI_Status> sttsX(outDegreeX), sttsY(outDegreeY);
             if(this->OP == 0){/* bcast */
+                std::vector<MPI_Status> sttsX(outDegreeX), sttsY(outDegreeY);
                 for(int i =0; i < outDegreeX; ++i)
                     MPI_Ibcast(bufferptrX + bcastXdisp[i], bcastXcnt[i], MPI_REAL_T, i,commX, &rqstsX[i]);
                 for(int i =0; i < outDegreeY; ++i)
@@ -116,6 +116,7 @@ namespace SpKernels {
         {
             public:
                 /* data */
+                MPI_Comm cartcomm;
                 MPI_Comm commP, commN;
                 int inDegree, outDegree;
                 idx_t dataUnitSize;
