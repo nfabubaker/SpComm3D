@@ -1,5 +1,6 @@
 
-#include "basic.hpp"
+#include "comm.hpp"
+#include <cstdint>
 #include <numeric>
 #include <string>
 
@@ -30,16 +31,23 @@ void get_comm_stats(std::string mtxName, idx_t f, int c, MPI_Comm comm, idx_t my
  */
     if(myrank == 0){
         char buff[512];
-        sprintf(buff,"%s %d %d %d %.2f %.2f %.2f %.2f %u %u %u %u",
+        if(sizeof(idx_t) == sizeof(uint32_t))
+            sprintf(buff,"%s %d %d %d %.2f %.2f %.2f %.2f %u %u %u %u",
                 mtxName.c_str(), size, f,c, 
                 totSendMsg/(float)size, totSendVol/(float)size, totRecvMsg/(float)size, totRecvVol/(float)size,
                 maxSendMsg, maxSendVol, maxRecvMsg, maxRecvVol);
+        else 
+            sprintf(buff,"%s %d %d %d %.2f %.2f %.2f %.2f %lu %lu %lu %lu",
+                mtxName.c_str(), size, f,c, 
+                totSendMsg/(float)size, totSendVol/(float)size, totRecvMsg/(float)size, totRecvVol/(float)size,
+                maxSendMsg, maxSendVol, maxRecvMsg, maxRecvVol);
+            
         retStr = buff;
     }
 }
 
 void get_timing_stats(idx_t mycomm1time, idx_t mycomm2time, idx_t mycomptime,  MPI_Comm comm, std::string& retStr){
-    idx_t gcomm1Time, gcomm2Time, gcompTime;
+    uint32_t gcomm1Time, gcomm2Time, gcompTime;
     MPI_Reduce(&mycomm1time, &gcomm1Time, 1, MPI_IDX_T, MPI_MAX, 0, comm);
     MPI_Reduce(&mycomm2time, &gcomm2Time, 1, MPI_IDX_T, MPI_MAX, 0, comm);
     MPI_Reduce(&mycomptime, &gcompTime, 1, MPI_IDX_T, MPI_MAX, 0, comm);

@@ -1,7 +1,6 @@
 #pragma once
 
 #include "basic.hpp"
-#include "mpi.h"
 #include <cstdlib>
 
 
@@ -10,11 +9,12 @@ namespace SpKernels{
     {
         public:
             Mesh3D (int X, int Y, int Z){
-                if(X*Y*Z != size) {
-                    fprintf(stderr, "ERROR: mult of dims is not equal"
-                           " to size");
-                    exit(EXIT_FAILURE);
-                }
+/*                 if(X*Y*Z != size) {
+ *                     fprintf(stderr, "ERROR: mult of dims is not equal"
+ *                            " to size");
+ *                     exit(EXIT_FAILURE);
+ *                 }
+ */
                 this->X = X; this->MX = 1;
                 this->Y = Y; this->MY = X;
                 this->Z = Z; this->MZ = MY * Y;
@@ -60,13 +60,10 @@ namespace SpKernels{
                 for(size_t i=0; i < X; ++i) NX.push_back(getRankFromCoords(i, coords[1], coords[2]));
                 return NX;
             }
-            int getRank() {return rank;}
-            int getSize() {return size;}
         private:
             /* data */
             int X,Y,Z;
             int MX, MY, MZ;
-            int size, rank;
             
     };
 

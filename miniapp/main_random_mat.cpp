@@ -2,8 +2,7 @@
 #include <mpi.h>
 #include <sys/types.h>
 #include <vector>
-#include "../src/basic.hpp"
-#include "mpi_proto.h"
+#include "comm.hpp"
 
 
 
