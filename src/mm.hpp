@@ -14,6 +14,19 @@ namespace SpKernels{
             mm (string FN){
                 _FN = FN;
             }
+            
+    void read_meta_data(string FN, idx_t& nrows, idx_t& ncols, idx_t& nnz, bool& mm_pattern, bool& mm_symm, bool& mm_complex){
+
+                string firstline;
+                ifstream mtxfile(FN.c_str());
+                getline(mtxfile, firstline);
+                if(firstline.find("pattern") != string::npos) mm_pattern = true;
+                if(firstline.find("symmetric") != string::npos) mm_symm = true;
+                if(firstline.find("complex") != string::npos) mm_complex = true;
+                while(mtxfile.peek() == '%') mtxfile.ignore(2048, '\n');
+                mtxfile >> nrows >> ncols >> nnz;
+
+    }
             coo_mtx& read_mm(std::string FN){
                 bool use_pfile = false, write_ovec=false, mm_pattern=false, mm_symm=false, mm_complex=false;
                 idx_t _nrows, _ncols, _nnz;

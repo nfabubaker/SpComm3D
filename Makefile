@@ -8,5 +8,7 @@ debug:
 	#g++ -O3 -o sddmm miniapp/main.cpp src/*.cpp -I/usr/include/x86_64-linux-gnu/mpich -L/usr/lib/x86_64-linux-gnu -lmpi
 serialSim: 
 	g++ -ggdb -o serialSim miniapp/serialSim.cpp
+db:
+	g++ -ggdb -o db tools/read_distribute_mm.cpp
 clean: 
-	rm sddmm serialSim debug
+	rm sddmm serialSim debug db
