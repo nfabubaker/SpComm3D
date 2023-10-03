@@ -165,8 +165,9 @@ ERR_EXIT:
     /* 3d comm setup 
      * 
      * */
-    void setup_3dsddmm(coo_mtx& C, const idx_t f, const int c , const MPI_Comm comm, coo_mtx& Cloc, denseMatrix& Aloc, denseMatrix& Bloc, 
+    void setup_3dsddmm(coo_mtx& Cloc, const idx_t f, const int c , const MPI_Comm comm, denseMatrix& Aloc, denseMatrix& Bloc, 
             SparseComm<real_t>& comm_expand, SparseComm<real_t>& comm_reduce);
     void setup_3dsddmm_bcast(coo_mtx& C, const idx_t f, const int c , const MPI_Comm comm, coo_mtx& Cloc, denseMatrix& Aloc, denseMatrix& Bloc, 
         DenseComm& comm_pre, DenseComm& comm_post);
+    
 }

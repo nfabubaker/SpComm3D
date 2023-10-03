@@ -253,10 +253,9 @@ void localize_C_indices(coo_mtx& Cloc){
     }
 }
 
-void SpKernels::setup_3dsddmm(coo_mtx& C, const idx_t f, const int c , const MPI_Comm comm, coo_mtx& Cloc, denseMatrix& Aloc, denseMatrix& Bloc, 
+void SpKernels::setup_3dsddmm(coo_mtx& Cloc, const idx_t f, const int c , const MPI_Comm xycomm, const MPI_Comm zcomm, denseMatrix& Aloc, denseMatrix& Bloc,
+        std::vector<int>& rpvec, std::vector<int>& cpvec,
         SparseComm<real_t>& comm_expand, SparseComm<real_t>& comm_reduce){
-    MPI_Comm xycomm, zcomm;
-    vector<int> rpvec, cpvec; 
     distribute3D(C, f, c, comm, Cloc, Aloc, Bloc, rpvec, cpvec,
             &xycomm, &zcomm);
     setup_3dsddmm_expand(Aloc, Bloc, Cloc, rpvec, cpvec, comm_expand, xycomm);
@@ -264,13 +263,12 @@ void SpKernels::setup_3dsddmm(coo_mtx& C, const idx_t f, const int c , const MPI
     localize_C_indices(Cloc);
 
 }
-void SpKernels::setup_3dsddmm_bcast(coo_mtx& C, const idx_t f, const int c , const MPI_Comm comm, coo_mtx& Cloc, denseMatrix& Aloc, denseMatrix& Bloc, 
+void SpKernels::setup_3dsddmm_bcast(coo_mtx& Cloc, const idx_t f, const int c ,
+        denseMatrix& Aloc, denseMatrix& Bloc, 
+        std::vector<int> rpvec, std::vector<int> cpvec,
+        const MPI_Comm xycomm, const MPI_Comm zcomm,
         DenseComm& comm_pre, DenseComm& comm_post){
-    MPI_Comm xycomm, zcomm;
-    vector<int> rpvec, cpvec; 
     std::array<int, 2> dims, tarr1, tarr2;
-    distribute3D_Bcast(C, f, c, comm, Cloc, Aloc, Bloc, rpvec, cpvec,
-            &xycomm, &zcomm);
     MPI_Comm xcomm, ycomm;
     std::array<int, 2> remdim = {false, true};
     MPI_Cart_sub(xycomm, remdim.data(), &xcomm); 

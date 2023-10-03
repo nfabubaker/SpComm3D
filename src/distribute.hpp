@@ -1,6 +1,7 @@
 
 
 #include "basic.hpp"
+#include "comm.hpp"
 #include "Mesh3D.hpp"
 #include "mpi.h"
 #include <algorithm>
@@ -141,14 +142,20 @@ namespace SpKernels {
 
 
     /* this function operates on 2D mesh (communicator split over z) */
-    void distribute3D_AB(
-
-            /*             denseMatrix& A,
-             *             denseMatrix& B,
-             We assume random A&B for now, therefore we only distribute indices
-             */
+    void distribute3D_AB_respect_communication(
             denseMatrix& Aloc,
             denseMatrix& Bloc,
+            std::vector<int>& rpvec2D,
+            std::vector<int>& cpvec2D,
+            std::vector<int>& rpvec,
+            std::vector<int>& cpvec,
+            coo_mtx& Cloc,
+            const idx_t f,
+            MPI_Comm cartXYcomm)
+    {
+    }
+    /* this function operates on 2D mesh (communicator split over z) */
+    void distribute3D_AB_random(
             std::vector<int>& rpvec2D,
             std::vector<int>& cpvec2D,
             std::vector<int>& rpvec,
@@ -190,7 +197,6 @@ namespace SpKernels {
             denseMatrix& Bloc, std::vector<int>& rpvec, 
             std::vector<int>& cpvec, MPI_Comm* xycomm, MPI_Comm* zcomm ){
 
-        std:: vector<int> rpvec2D, cpvec2D;
         /*
          * Distribute C and fill rpvec2D, cpvec2D
          */
@@ -236,56 +242,24 @@ namespace SpKernels {
         for(size_t i = 0; i < Cloc.gcols; ++i) assert(cpvec[i] >= 0 && cpvec[i] <= size/Z);
     }
 
-    void distribute3D_Bcast(coo_mtx& C, idx_t f, int c, MPI_Comm world_comm, coo_mtx& Cloc, denseMatrix& Aloc, 
-            denseMatrix& Bloc, std::vector<int>& rpvec, 
-            std::vector<int>& cpvec, MPI_Comm* xycomm, MPI_Comm* zcomm ){
-        
-        std:: vector<int> rpvec2D, cpvec2D;
-        /*
-         * Distribute C and fill rpvec2D, cpvec2D
-         */
-        int myrank, size;
-        MPI_Comm_size(world_comm, &size);
-        MPI_Comm_rank(world_comm, &myrank);
-        std::array<int, 3> dims = {0,0,c};
-        std::array<int,3> zeroArr ={0,0,0};
-        std::array<int,3> tdims ={0,0,0};
-        MPI_Dims_create(size, 3, dims.data());
-        MPI_Comm cartcomm;
-        MPI_Cart_create(world_comm, 3, dims.data(), zeroArr.data(), 0, &cartcomm);   
-        int X = dims[0], Y = dims[1], Z = dims[2];
-        idx_t floc = f / Z;
-        if(f % Z > 0){
-            MPI_Cart_coords(cartcomm, myrank, 3, tdims.data());
-            int myzcoord = tdims[2];
-            if(myzcoord < f% Z) ++floc;
-        }
-        distribute3D_C(C, Cloc, rpvec2D, cpvec2D, cartcomm, zcomm);
-        rpvec.resize(Cloc.grows); cpvec.resize(Cloc.gcols);
-        /* prepare Aloc, Bloc according to local dims of Cloc */
-        // split the 3D mesh communicator to 2D slices 
-        std::array<int, 3> remaindims = {true, true, false};
-        MPI_Cart_sub(cartcomm, remaindims.data(), xycomm); 
+    void create_AB_Bcast(coo_mtx& Cloc, idx_t floc, std::vector<int>& rpvec, std::vector<int>& cpvec,
+            MPI_Comm xycomm, denseMatrix& Aloc, denseMatrix& Bloc
+            ){
         int myxyrank;
-        MPI_Comm_rank(*xycomm, &myxyrank);  
-        /* distribute Aloc and Bloc  */
-        distribute3D_AB(Aloc, Bloc, rpvec2D, cpvec2D, rpvec, cpvec,
-                Cloc, f, *xycomm); 
-        /* at this point, lrows should for p_ij should be the count of all rows 
-         * assigned to row p_(i,:) */
-        MPI_Cart_coords(*xycomm, myxyrank, 2, tdims.data());
+        std::array<int,3> tdims ={0,0,0};
+        MPI_Cart_coords(xycomm, myxyrank, 2, tdims.data());
         int myxcoord = tdims[0];
         int myycoord = tdims[1];
         Cloc.lrows = 0; Cloc.lcols = 0;
         for(size_t i=0; i < Cloc.grows; ++i){
-            MPI_Cart_coords(*xycomm, rpvec[i], 2, tdims.data());
+            MPI_Cart_coords(xycomm, rpvec[i], 2, tdims.data());
             if(tdims[0] == myxcoord){ 
                 Cloc.ltgR.push_back(i);
                 Cloc.gtlR.at(i) = Cloc.lrows++;
             }
         }
         for(size_t i=0; i < Cloc.gcols; ++i){ 
-            MPI_Cart_coords(*xycomm, cpvec[i], 2, tdims.data());
+            MPI_Cart_coords(xycomm, cpvec[i], 2, tdims.data());
             if(tdims[1] == myycoord){ 
                 Cloc.ltgC.push_back(i);
                 Cloc.gtlC.at(i) = Cloc.lcols++;
@@ -293,7 +267,7 @@ namespace SpKernels {
         }
         Aloc.m = Cloc.lrows; Aloc.n = floc;
         Bloc.m = Cloc.lcols; Bloc.n = floc;
-        Aloc.data.resize(Aloc.m * Aloc.n, myrank+1);
-        Bloc.data.resize(Bloc.m * Bloc.n, myrank+1);
+        Aloc.data.resize(Aloc.m * Aloc.n, 1);
+        Bloc.data.resize(Bloc.m * Bloc.n, 1);
     }
 }
