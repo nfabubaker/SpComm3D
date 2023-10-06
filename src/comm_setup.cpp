@@ -10,6 +10,8 @@
 using namespace SpKernels;
 using namespace std;
 
+#define LTGr(x) Cloc.ltgR(x)
+#define LTGc(x) Cloc.ltgC(x)
 
 void setup_3dsddmm_expand(denseMatrix& Aloc, denseMatrix& Bloc, coo_mtx& Cloc, vector<int>& rpvec, vector<int>& cpvec, SparseComm<real_t>& comm_expand,  MPI_Comm comm){
 
@@ -20,7 +22,10 @@ void setup_3dsddmm_expand(denseMatrix& Aloc, denseMatrix& Bloc, coo_mtx& Cloc, v
     vector<bool> myRows(Cloc.grows,false), myCols(Cloc.gcols, false);
     vector<idx_t> recvCount(size, 0);
     vector<idx_t> sendCount(size, 0);
-    for (int i = 0; i < Cloc.lnnz; ++i) { myRows.at(Cloc.elms.at(i).row) = true; myCols.at(Cloc.elms.at(i).col) = true; }
+    for (auto& elm : Cloc.elms) {
+        myRows.at(Cloc.ltgR.at(elm.row)) = true;
+        myCols.at(Cloc.ltgC.at(elm.col)) = true;
+    }
 
     /* step2: decide which rows/cols I will recv from which processor */
     for (size_t i = 0; i < Cloc.grows; ++i) if(myRows.at(i)) recvCount.at(rpvec.at(i))++; 
@@ -29,8 +34,10 @@ void setup_3dsddmm_expand(denseMatrix& Aloc, denseMatrix& Bloc, coo_mtx& Cloc, v
     /* exchange recv info, now each processor knows send count for each other processor */
     MPI_Alltoall(recvCount.data(), 1, MPI_IDX_T, sendCount.data(), 1, MPI_IDX_T, comm);
     idx_t totSendCnt = 0, totRecvCnt = 0;
-    totSendCnt = accumulate(sendCount.begin(), sendCount.end(), totSendCnt); totSendCnt -= sendCount[myrank];
-    totRecvCnt = accumulate(recvCount.begin(), recvCount.end(), totRecvCnt); totRecvCnt -= recvCount[myrank];
+    totSendCnt = accumulate(sendCount.begin(), sendCount.end(), totSendCnt);
+    totSendCnt -= sendCount[myrank];
+    totRecvCnt = accumulate(recvCount.begin(), recvCount.end(), totRecvCnt);
+    totRecvCnt -= recvCount[myrank];
 
     /* exchange row/col IDs */
     SparseComm<idx_t> esc(2); /* esc: short for expand setup comm */
@@ -240,34 +247,43 @@ void setup_3dsddmm_reduce(coo_mtx& Cloc, SparseComm<real_t>& comm_reduce, MPI_Co
             Cloc.owned.push_back(Cloc.elms[i].val);
         }
     }
-    
+
 }
 
 
-void localize_C_indices(coo_mtx& Cloc){
-    for(size_t i = 0; i < Cloc.lnnz; ++i){
-        idx_t row = Cloc.elms.at(i).row;
-        Cloc.elms.at(i).row = Cloc.gtlR.at(row);
-        idx_t col = Cloc.elms.at(i).col;
-        Cloc.elms.at(i).col = Cloc.gtlC.at(col);
-    }
-}
-
-void SpKernels::setup_3dsddmm(coo_mtx& Cloc, const idx_t f, const int c , const MPI_Comm xycomm, const MPI_Comm zcomm, denseMatrix& Aloc, denseMatrix& Bloc,
-        std::vector<int>& rpvec, std::vector<int>& cpvec,
-        SparseComm<real_t>& comm_expand, SparseComm<real_t>& comm_reduce){
-    distribute3D(C, f, c, comm, Cloc, Aloc, Bloc, rpvec, cpvec,
-            &xycomm, &zcomm);
+void SpKernels::setup_3dsddmm(
+        coo_mtx& Cloc,
+        const idx_t f,
+        const int c ,
+        const MPI_Comm xycomm,
+        const MPI_Comm zcomm,
+        denseMatrix& Aloc,
+        denseMatrix& Bloc,
+        std::vector<int>& rpvec,
+        std::vector<int>& cpvec,
+        SparseComm<real_t>& comm_expand,
+        SparseComm<real_t>& comm_reduce
+        )
+{
     setup_3dsddmm_expand(Aloc, Bloc, Cloc, rpvec, cpvec, comm_expand, xycomm);
     setup_3dsddmm_reduce(Cloc, comm_reduce, zcomm);
-    localize_C_indices(Cloc);
 
 }
-void SpKernels::setup_3dsddmm_bcast(coo_mtx& Cloc, const idx_t f, const int c ,
-        denseMatrix& Aloc, denseMatrix& Bloc, 
-        std::vector<int> rpvec, std::vector<int> cpvec,
-        const MPI_Comm xycomm, const MPI_Comm zcomm,
-        DenseComm& comm_pre, DenseComm& comm_post){
+void SpKernels::setup_3dsddmm_bcast(
+        coo_mtx& Cloc,
+        const idx_t f,
+        const int c,
+        denseMatrix& Aloc,
+        denseMatrix& Bloc, 
+        std::vector<int>& rpvec, 
+        std::vector<int>& cpvec,
+        const MPI_Comm xycomm,
+        const MPI_Comm zcomm,
+        DenseComm& comm_pre,
+        DenseComm& comm_post
+        )
+{
+
     std::array<int, 2> dims, tarr1, tarr2;
     MPI_Comm xcomm, ycomm;
     std::array<int, 2> remdim = {false, true};
@@ -276,7 +292,7 @@ void SpKernels::setup_3dsddmm_bcast(coo_mtx& Cloc, const idx_t f, const int c ,
     MPI_Cart_sub(xycomm, remdim.data(), &ycomm); 
     MPI_Cart_get(xycomm, 2, dims.data(), tarr1.data(), tarr2.data()); 
     int X = dims[0], Y = dims[1], myxcoord = tarr2[0], myycoord = tarr2[1];   
-    
+
 
     /* setup Bcast comm */
     comm_pre.OP = 0;
@@ -308,7 +324,7 @@ void SpKernels::setup_3dsddmm_bcast(coo_mtx& Cloc, const idx_t f, const int c ,
         comm_pre.bcastXdisp[i] = comm_pre.bcastXdisp[i-1] + comm_pre.bcastXcnt[i-2];} 
     for(size_t i = 2; i < Y+2; ++i) {
         comm_pre.bcastYdisp[i] = comm_pre.bcastYdisp[i-1] + comm_pre.bcastYcnt[i-2];} 
-    
+
     vector<idx_t> mapA(Aloc.m), mapB(Bloc.m);
     for (size_t i = 0; i < Aloc.m; ++i) mapA[i] = comm_pre.bcastXdisp[rpvecX[i]+1]++; 
     for (size_t i = 0; i < Bloc.m; ++i) mapB[i] = comm_pre.bcastYdisp[cpvecY[i]+1]++; 
@@ -317,7 +333,7 @@ void SpKernels::setup_3dsddmm_bcast(coo_mtx& Cloc, const idx_t f, const int c ,
         if(Cloc.gtlR[i] != -1) Cloc.gtlR.at(i) = mapA[Cloc.gtlR.at(i)]; 
     for (size_t i = 0; i < Cloc.gcols; ++i)
         if(Cloc.gtlC[i] != -1) Cloc.gtlC.at(i) = mapB[Cloc.gtlC.at(i)]; 
-    
+
     for(size_t i = 0; i < X; ++i) {
         comm_pre.bcastXcnt[i] *= Aloc.n;
         comm_pre.bcastXdisp[i] *= Aloc.n;
@@ -342,8 +358,14 @@ void SpKernels::setup_3dsddmm_bcast(coo_mtx& Cloc, const idx_t f, const int c ,
             Cloc.owned.push_back(Cloc.elms[i].val);
         }
     }
-    
-    localize_C_indices(Cloc);
+    /* re-localize C nonzeros */
+    for(size_t i = 0; i < Cloc.lnnz; ++i){
+        idx_t row = Cloc.elms.at(i).row;
+        Cloc.elms.at(i).row = Cloc.gtlR.at(row);
+        idx_t col = Cloc.elms.at(i).col;
+        Cloc.elms.at(i).col = Cloc.gtlC.at(col);
+    }
+
 
 }
 

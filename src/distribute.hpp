@@ -131,13 +131,28 @@ namespace SpKernels {
         }
         MPI_Bcast(Cloc.owners.data(), Cloc.lnnz, MPI_INT, 0, *zcomm);
         for(size_t i = 0; i < Cloc.lnnz; ++i){ if(Cloc.owners[i] == zrank) Cloc.ownedNnz++;}
+        Cloc.ltgR.clear(); Cloc.ltgC.clear(); 
         Cloc.gtlR.resize(Cloc.grows, -1); Cloc.gtlC.resize(Cloc.gcols, -1);
         Cloc.lrows = 0; Cloc.lcols = 0;
         for(size_t i = 0; i < Cloc.lnnz; ++i){
-            if( Cloc.gtlR[Cloc.elms.at(i).row] == -1) Cloc.gtlR[Cloc.elms.at(i).row] = Cloc.lrows++;
-            if( Cloc.gtlC[Cloc.elms.at(i).col] == -1) Cloc.gtlC[Cloc.elms.at(i).col] = Cloc.lcols++;
+            idx_t rid = Cloc.elms.at(i).row;
+            idx_t cid = Cloc.elms.at(i).col;
+            if( Cloc.gtlR[rid] == -1){
+                Cloc.gtlR[rid] = Cloc.lrows++;
+                Cloc.ltgR.push_back(rid);
+            }
+            if( Cloc.gtlC[cid] == -1){
+                Cloc.gtlC[cid] = Cloc.lcols++;
+                Cloc.ltgC.push_back(cid);
+            }
         }
-
+        /* now localize C indices */
+    for(size_t i = 0; i < Cloc.lnnz; ++i){
+        idx_t row = Cloc.elms.at(i).row;
+        Cloc.elms.at(i).row = Cloc.gtlR.at(row);
+        idx_t col = Cloc.elms.at(i).col;
+        Cloc.elms.at(i).col = Cloc.gtlC.at(col);
+    }
     }
 
 

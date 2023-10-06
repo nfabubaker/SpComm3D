@@ -7,9 +7,6 @@
 using namespace SpKernels;
 
 
-typedef struct _parallelTiming{
-    idx_t comm1Time, comm2Time, compTime;
-} parallelTiming;
 
 void get_comm_stats(std::string mtxName, idx_t f, int c, MPI_Comm comm, idx_t mySendMsg, idx_t mySendVol, idx_t myRecvMsg, idx_t myRecvVol, std::string& retStr){    
     idx_t totSendVol, maxSendVol, totRecvVol, maxRecvVol, totSendMsg, totRecvMsg, maxSendMsg, maxRecvMsg;
@@ -61,7 +58,7 @@ void get_timing_stats(idx_t mycomm1time, idx_t mycomm2time, idx_t mycomptime,  M
     }
 }
 
-void print_comm_stats_sparse(std::string mtxName, SparseComm<real_t>& SpComm, idx_t f, int c, parallelTiming& pt, MPI_Comm comm){
+void print_comm_stats_sparse(std::string mtxName, SparseComm<real_t>& SpComm, idx_t f, parallelTiming& pt, int X, int Y, int Z, MPI_Comm comm){
 
     idx_t mySendVol, myRecvVol, mySendMsg, myRecvMsg;
     mySendVol = std::accumulate(SpComm.sendCount.begin(), SpComm.sendCount.end(), 0.0); 
@@ -71,13 +68,13 @@ void print_comm_stats_sparse(std::string mtxName, SparseComm<real_t>& SpComm, id
     int myrank; 
     MPI_Comm_rank(comm, &myrank);
     std::string stats_str, times_str;
-    get_comm_stats(mtxName, f, c, comm, mySendMsg, mySendVol, myRecvMsg, myRecvVol, stats_str);
+    get_comm_stats(mtxName, f, Z, comm, mySendMsg, mySendVol, myRecvMsg, myRecvVol, stats_str);
     get_timing_stats(pt.comm1Time, pt.comm2Time, pt.compTime, comm, times_str);
     if(myrank == 0){
         printf("%s %s\n",stats_str.c_str(), times_str.c_str());
     }
 }
-void print_comm_stats_dense(std::string mtxName, DenseComm& DComm, idx_t f, int c, parallelTiming& pt, MPI_Comm comm){
+void print_comm_stats_dense(std::string mtxName, DenseComm& DComm, idx_t f, parallelTiming& pt, int X, int Y, int Z, MPI_Comm comm){
 
     idx_t mySendVol, myRecvVol, mySendMsg, myRecvMsg;
   
@@ -104,7 +101,7 @@ void print_comm_stats_dense(std::string mtxName, DenseComm& DComm, idx_t f, int 
     int myrank; 
     MPI_Comm_rank(comm, &myrank);
     std::string stats_str, times_str;
-    get_comm_stats(mtxName, f, c, comm, mySendMsg, mySendVol, myRecvMsg, myRecvVol, stats_str);
+    get_comm_stats(mtxName, f, Z, comm, mySendMsg, mySendVol, myRecvMsg, myRecvVol, stats_str);
     get_timing_stats(pt.comm1Time, pt.comm2Time, pt.compTime, comm, times_str);
     if(myrank == 0){
         printf("%s %s\n",stats_str.c_str(), times_str.c_str());

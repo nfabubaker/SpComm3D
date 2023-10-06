@@ -13,6 +13,9 @@
 #define idx_t uint64_t
 #define real_t double
 
+typedef struct _parallelTiming{
+    idx_t comm1Time, comm2Time, compTime;
+} parallelTiming;
 
 namespace SpKernels {
 
@@ -38,6 +41,7 @@ namespace SpKernels {
     } denseMatrix;
 
     typedef struct _coo_mtx{
+        std::string mtxName;
         idx_t lrows, lcols, lnnz, ownedNnz, grows, gcols, gnnz;
         std::vector<idx_t> ltgR, gtlR, ltgC, gtlC, lto, otl;
         std::vector<real_t> owned;
