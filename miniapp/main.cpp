@@ -148,6 +148,10 @@ int main(int argc, char *argv[])
         /* prepare Aloc, Bloc according to local dims of Cloc */
         // split the 3D mesh communicator to 2D slices 
 
+        Aloc.m = Cloc.lrows; Aloc.n = floc;
+        Bloc.m = Cloc.lcols; Bloc.n = floc;
+        Aloc.data.resize(Aloc.m * Aloc.n, 1);
+        Bloc.data.resize(Bloc.m * Bloc.n, 1);
         setup_3dsddmm(Cloc, f, c, xycomm, zcomm, Aloc, Bloc, rpvec, cpvec, comm_expand, comm_reduce); 
         dist_sddmm_spcomm(Aloc, Bloc, Sloc, comm_expand, comm_reduce, Cloc);
     }

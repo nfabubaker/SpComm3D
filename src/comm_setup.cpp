@@ -299,9 +299,12 @@ void SpKernels::setup_3dsddmm_bcast(
     comm_pre.commX = xcomm; comm_pre.commY = ycomm;
     comm_pre.rqstsX.resize(X); comm_pre.rqstsY.resize(Y);
     comm_pre.outDegreeX = dims[1]; comm_pre.outDegreeY = dims[0]; 
-    comm_pre.bufferptrX = Aloc.data.data(); comm_pre.bufferptrY = Bloc.data.data();
-    comm_pre.bcastXcnt.resize(comm_pre.outDegreeX, 0); comm_pre.bcastYcnt.resize(comm_pre.outDegreeY,0);
-    comm_pre.bcastXdisp.resize(comm_pre.outDegreeX+2, 0); comm_pre.bcastYdisp.resize(comm_pre.outDegreeY+2,0);
+    comm_pre.bufferptrX = Aloc.data.data();
+    comm_pre.bufferptrY = Bloc.data.data();
+    comm_pre.bcastXcnt.resize(comm_pre.outDegreeX, 0);
+    comm_pre.bcastYcnt.resize(comm_pre.outDegreeY,0);
+    comm_pre.bcastXdisp.resize(comm_pre.outDegreeX+2, 0);
+    comm_pre.bcastYdisp.resize(comm_pre.outDegreeY+2,0);
     vector<int> rpvecX(Aloc.m), cpvecY(Bloc.m);
     idx_t tt = 0;
     for(size_t i = 0; i < Cloc.grows; ++i){
