@@ -259,7 +259,9 @@ namespace SpKernels {
 
     void create_AB_Bcast(coo_mtx& Cloc, idx_t floc, 
             std::vector<int>& rpvec, std::vector<int>& cpvec,
-            MPI_Comm xycomm, denseMatrix& Aloc, denseMatrix& Bloc
+            MPI_Comm xycomm, denseMatrix& Aloc, denseMatrix& Bloc,
+            std::vector<idx_t> gtlR, std::vector<idx_t> gtlC,
+            std::vector<idx_t> ltgR, std::vector<idx_t> ltgC
             )
     {
         int myxyrank;
@@ -267,26 +269,23 @@ namespace SpKernels {
         MPI_Cart_coords(xycomm, myxyrank, 2, tdims.data());
         int myxcoord = tdims[0];
         int myycoord = tdims[1];
-        Cloc.lrows = 0; Cloc.lcols = 0;
-        idx_t lrows = Cloc.lrows, lcols = Cloc.lcols;
+        Aloc.m = 0; Bloc.m = 0;
         for(size_t i=0; i < Cloc.grows; ++i){
             MPI_Cart_coords(xycomm, rpvec[i], 2, tdims.data());
             if(tdims[0] == myxcoord){ 
-                Cloc.ltgR.push_back(i);
-                Cloc.gtlR.at(i) = Cloc.lrows++;
-                lrows++;
+                ltgR.push_back(i);
+                gtlR.at(i) = Aloc.m++;
             }
         }
         for(size_t i=0; i < Cloc.gcols; ++i){ 
             MPI_Cart_coords(xycomm, cpvec[i], 2, tdims.data());
             if(tdims[1] == myycoord){ 
-                Cloc.ltgC.push_back(i);
-                Cloc.gtlC.at(i) = Cloc.lcols++;
-                lcols ++;
+                ltgC.push_back(i);
+                gtlC.at(i) = Bloc.m++; 
             }
         }
-        Aloc.m = lrows; Aloc.n = floc;
-        Bloc.m = lcols; Bloc.n = floc;
+        Aloc.n = floc;
+        Bloc.n = floc;
         Aloc.data.resize(Aloc.m * Aloc.n, 1);
         Bloc.data.resize(Bloc.m * Bloc.n, 1);
     }

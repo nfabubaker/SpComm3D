@@ -160,9 +160,27 @@ int main(int argc, char *argv[])
         DenseComm comm_pre, comm_post;
         coo_mtx Cloc;
         denseMatrix Aloc, Bloc;
-        create_AB_Bcast(Cloc, floc, rpvec, cpvec, xycomm, Aloc, Bloc);
+        std::vector<idx_t> gtlR(Cloc.grows, -1), gtlC(Cloc.gcols, -1), ltgR, ltgC;
+        create_AB_Bcast(Cloc, floc, rpvec, cpvec, xycomm, Aloc, Bloc,
+                gtlR, gtlC, ltgR, ltgC);
+        /* re-map local rows/cols in Cloc */
+        for(auto& el : Cloc.elms){
+            idx_t lrid, lcid;
+            lrid = el.row; 
+            lcid = el.col;
+            el.row = gtlR[Cloc.ltgR[lrid]];
+            el.col = gtlC[Cloc.ltgC[lcid]];
+        }
         setup_3dsddmm_bcast(Cloc,f,c, Aloc, Bloc, rpvec, cpvec, xycomm, zcomm,  comm_pre, comm_post);
         dist_sddmm_dcomm(Aloc, Bloc, Sloc, comm_pre, comm_post, Cloc);
+        /* re-map local rows/cols in Cloc */
+        for(auto& el : Cloc.elms){
+            idx_t lrid, lcid;
+            lrid = el.row; 
+            lcid = el.col;
+            el.row = Cloc.gtlR[ltgR[lrid]];
+            el.col = Cloc.gtlC[ltgC[lcid]];
+        }
     }
     MPI_Finalize();
     return 0;

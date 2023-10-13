@@ -10,8 +10,6 @@
 using namespace SpKernels;
 using namespace std;
 
-#define LTGr(x) Cloc.ltgR(x)
-#define LTGc(x) Cloc.ltgC(x)
 
 void setup_3dsddmm_expand(denseMatrix& Aloc, denseMatrix& Bloc, coo_mtx& Cloc, vector<int>& rpvec, vector<int>& cpvec, SparseComm<real_t>& comm_expand,  MPI_Comm comm){
 
@@ -329,6 +327,9 @@ void SpKernels::setup_3dsddmm_bcast(
         comm_pre.bcastYdisp[i] = comm_pre.bcastYdisp[i-1] + comm_pre.bcastYcnt[i-2];} 
 
     vector<idx_t> mapA(Aloc.m), mapB(Bloc.m);
+
+    /* map each local row/col to the extended row/col */
+
     for (size_t i = 0; i < Aloc.m; ++i) mapA[i] = comm_pre.bcastXdisp[rpvecX[i]+1]++; 
     for (size_t i = 0; i < Bloc.m; ++i) mapB[i] = comm_pre.bcastYdisp[cpvecY[i]+1]++; 
     /* re-assign gtl and ltg in Cloc */
