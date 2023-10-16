@@ -2,6 +2,7 @@
 #include <chrono>
 #include "distributed_comp.hpp"
 #include "core_ops.hpp"
+#include "comm_stats.hpp"
 
 
 
@@ -68,10 +69,11 @@ void dist_sddmm_spcomm(
             comm_post.perform_dense_comm();
             stop = chrono::high_resolution_clock::now();
             pt.comm2Time = chrono::duration_cast<chrono::milliseconds>(stop-start).count(); 
-            for(size_t i = 0; i < Cloc.ownedNnz; ++i){
-                idx_t lidx = Cloc.otl[i];
-                Cloc.elms[lidx].val *= Cloc.owned[i];
-            }
+/*             for(size_t i = 0; i < Cloc.ownedNnz; ++i){
+ *                 idx_t lidx = Cloc.otl[i];
+ *                 Cloc.elms[lidx].val *= Cloc.owned[i];
+ *             }
+ */
             /*         MPI_Barrier(MPI_COMM_WORLD);
              *         if(rank == 0){
              *             std::cout << "Cloc after reduce:" << std::endl;
@@ -79,8 +81,8 @@ void dist_sddmm_spcomm(
              *         }
              */
             MPI_Barrier(MPI_COMM_WORLD);
-            print_comm_stats_dense(mtxName, comm_pre, f, c, pt, MPI_COMM_WORLD); 
-            print_comm_stats_dense(mtxName, comm_post, f, c, pt, MPI_COMM_WORLD); 
+            print_comm_stats_dense(C.mtxName, comm_pre, A.n,pt, 0,0,0, MPI_COMM_WORLD); 
+            print_comm_stats_dense(C.mtxName, comm_post, A.n, pt, 0,0,0, MPI_COMM_WORLD); 
 
     }
 }

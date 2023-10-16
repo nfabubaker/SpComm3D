@@ -74,7 +74,8 @@ void print_comm_stats_sparse(std::string mtxName, SparseComm<real_t>& SpComm, id
         printf("%s %s\n",stats_str.c_str(), times_str.c_str());
     }
 }
-void print_comm_stats_dense(std::string mtxName, DenseComm& DComm, idx_t f, parallelTiming& pt, int X, int Y, int Z, MPI_Comm comm){
+void print_comm_stats_dense(std::string mtxName, DenseComm& DComm, idx_t f,
+        parallelTiming& pt, int X, int Y, int Z, MPI_Comm comm){
 
     idx_t mySendVol, myRecvVol, mySendMsg, myRecvMsg;
   

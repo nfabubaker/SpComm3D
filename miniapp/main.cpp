@@ -129,9 +129,7 @@ int main(int argc, char *argv[])
         distribute3D_C(S, Sloc, rpvec2D, cpvec2D, cartcomm, &zcomm); 
         /* copy C to S and reset values in S */
         Cloc = Sloc;
-        for(idx_t i = 0; i < Sloc.lnnz; ++i){
-            Cloc.elms.at(i).val = 0.0;
-        }
+        for(auto& elm : Cloc.elms) elm.val = 0.0;
 
     }
     std::array<int, 3> remaindims = {true, true, false};
@@ -171,7 +169,8 @@ int main(int argc, char *argv[])
             el.row = gtlR[Cloc.ltgR[lrid]];
             el.col = gtlC[Cloc.ltgC[lcid]];
         }
-        setup_3dsddmm_bcast(Cloc,f,c, Aloc, Bloc, rpvec, cpvec, xycomm, zcomm,  comm_pre, comm_post);
+        setup_3dsddmm_bcast(Cloc,f,c, Aloc, Bloc, rpvec, cpvec,
+                xycomm, zcomm,  comm_pre, comm_post);
         dist_sddmm_dcomm(Aloc, Bloc, Sloc, comm_pre, comm_post, Cloc);
         /* re-map local rows/cols in Cloc */
         for(auto& el : Cloc.elms){

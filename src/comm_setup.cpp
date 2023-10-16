@@ -301,8 +301,8 @@ void SpKernels::setup_3dsddmm_bcast(
     comm_pre.bufferptrY = Bloc.data.data();
     comm_pre.bcastXcnt.resize(comm_pre.outDegreeX, 0);
     comm_pre.bcastYcnt.resize(comm_pre.outDegreeY,0);
-    comm_pre.bcastXdisp.resize(comm_pre.outDegreeX+2, 0);
-    comm_pre.bcastYdisp.resize(comm_pre.outDegreeY+2,0);
+    comm_pre.bcastXdisp.resize(comm_pre.outDegreeX+1, 0);
+    comm_pre.bcastYdisp.resize(comm_pre.outDegreeY+1,0);
     vector<int> rpvecX(Aloc.m), cpvecY(Bloc.m);
     idx_t tt = 0;
     for(size_t i = 0; i < Cloc.grows; ++i){
@@ -321,22 +321,21 @@ void SpKernels::setup_3dsddmm_bcast(
             comm_pre.bcastYcnt[tarr1[0]]++;
         }
     }
-    for(size_t i = 2; i < X+2; ++i) {
-        comm_pre.bcastXdisp[i] = comm_pre.bcastXdisp[i-1] + comm_pre.bcastXcnt[i-2];} 
-    for(size_t i = 2; i < Y+2; ++i) {
-        comm_pre.bcastYdisp[i] = comm_pre.bcastYdisp[i-1] + comm_pre.bcastYcnt[i-2];} 
+    for(size_t i = 1; i < X+1; ++i) {
+        comm_pre.bcastXdisp[i] = comm_pre.bcastXdisp[i-1] + comm_pre.bcastXcnt[i-1];} 
+    for(size_t i = 1; i < Y+1; ++i) {
+        comm_pre.bcastYdisp[i] = comm_pre.bcastYdisp[i-1] + comm_pre.bcastYcnt[i-1];} 
 
-    vector<idx_t> mapA(Aloc.m), mapB(Bloc.m);
-
-    /* map each local row/col to the extended row/col */
-
-    for (size_t i = 0; i < Aloc.m; ++i) mapA[i] = comm_pre.bcastXdisp[rpvecX[i]+1]++; 
-    for (size_t i = 0; i < Bloc.m; ++i) mapB[i] = comm_pre.bcastYdisp[cpvecY[i]+1]++; 
-    /* re-assign gtl and ltg in Cloc */
-    for (size_t i = 0; i < Cloc.grows; ++i)
-        if(Cloc.gtlR[i] != -1) Cloc.gtlR.at(i) = mapA[Cloc.gtlR.at(i)]; 
-    for (size_t i = 0; i < Cloc.gcols; ++i)
-        if(Cloc.gtlC[i] != -1) Cloc.gtlC.at(i) = mapB[Cloc.gtlC.at(i)]; 
+/*     vector<idx_t> mapA(Aloc.m), mapB(Bloc.m);
+ * 
+ * 
+ *     for (size_t i = 0; i < Aloc.m; ++i) mapA[i] = comm_pre.bcastXdisp[rpvecX[i]+1]++; 
+ *     for (size_t i = 0; i < Bloc.m; ++i) mapB[i] = comm_pre.bcastYdisp[cpvecY[i]+1]++; 
+ *     for (size_t i = 0; i < Cloc.grows; ++i)
+ *         if(Cloc.gtlR[i] != -1) Cloc.gtlR.at(i) = mapA[Cloc.gtlR.at(i)]; 
+ *     for (size_t i = 0; i < Cloc.gcols; ++i)
+ *         if(Cloc.gtlC[i] != -1) Cloc.gtlC.at(i) = mapB[Cloc.gtlC.at(i)]; 
+ */
 
     for(size_t i = 0; i < X; ++i) {
         comm_pre.bcastXcnt[i] *= Aloc.n;
@@ -363,12 +362,13 @@ void SpKernels::setup_3dsddmm_bcast(
         }
     }
     /* re-localize C nonzeros */
-    for(size_t i = 0; i < Cloc.lnnz; ++i){
-        idx_t row = Cloc.elms.at(i).row;
-        Cloc.elms.at(i).row = Cloc.gtlR.at(row);
-        idx_t col = Cloc.elms.at(i).col;
-        Cloc.elms.at(i).col = Cloc.gtlC.at(col);
-    }
+/*     for(size_t i = 0; i < Cloc.lnnz; ++i){
+ *         idx_t row = Cloc.elms.at(i).row;
+ *         Cloc.elms.at(i).row = Cloc.gtlR.at(row);
+ *         idx_t col = Cloc.elms.at(i).col;
+ *         Cloc.elms.at(i).col = Cloc.gtlC.at(col);
+ *     }
+ */
 
 
 }
