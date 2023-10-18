@@ -1,4 +1,5 @@
-#pragma once
+#ifndef _COMM_H
+#define _COMM_H
 #include "../src/basic.hpp"
 #include <mpi.h>
 #include <vector>
@@ -95,8 +96,8 @@ namespace SpKernels {
                 else sendBuff[idx++] = *sendptr[i];
             }
         }
-        void perform_sparse_comm(){
-            copy_to_sendbuff();
+        void perform_sparse_comm(bool copyflag = true){
+            if(copyflag) copy_to_sendbuff();
             /* TODO implement more efficient Irecv .. etc */
             if(commT == P2P){ 
                 if(commP == MPI_COMM_NULL) goto ERR_EXIT;
@@ -121,7 +122,7 @@ namespace SpKernels {
                         recvCount.data(), recvDisp.data(),
                         mpi_get_type(), commN);
             }
-            copy_from_recvbuff();
+            if(copyflag) copy_from_recvbuff();
             return;
 
 ERR_EXIT:
@@ -135,7 +136,7 @@ ERR_EXIT:
             size_t idx = 0;
             for (size_t i = 0; i < recvptr.size() ; ++i) {
                 if(this->dataUnitSize > 1){ 
-                    real_t *p = recvptr[i];
+                    T *p = recvptr[i];
                     for (size_t i = 0; i < this->dataUnitSize ; ++i)
                         *p++ = recvBuff[idx++];
                 }
@@ -147,7 +148,7 @@ ERR_EXIT:
             size_t idx = 0;
             for (size_t i = 0; i < recvptr.size() ; ++i) {
                 if(this->dataUnitSize > 1){ 
-                    real_t *p = recvptr[i];
+                    T *p = recvptr[i];
                     for (size_t i = 0; i < this->dataUnitSize ; ++i)
                         *p++ = recvBuff[idx++];
                 }
@@ -195,3 +196,4 @@ ERR_EXIT:
             DenseComm& comm_post
             );
 }
+#endif

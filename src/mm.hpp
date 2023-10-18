@@ -1,4 +1,5 @@
-#pragma once
+#ifndef _MM_H
+#define _MM_H
 
 #include "basic.hpp"
 #include <string>
@@ -74,3 +75,4 @@ namespace SpKernels{
     };
 }
 
+#endif

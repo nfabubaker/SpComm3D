@@ -1,4 +1,5 @@
-#pragma once
+#ifndef _MESH3D_H
+#define _MESH3D_H
 
 #include "basic.hpp"
 #include <cstdlib>
@@ -68,3 +69,4 @@ namespace SpKernels{
     };
 
 }
+#endif

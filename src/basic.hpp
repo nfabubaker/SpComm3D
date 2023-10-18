@@ -1,4 +1,5 @@
-#pragma once
+#ifndef _BASIC_H
+#define _BASIC_H
 
 #include <cstdlib>
 #include <numeric>
@@ -13,12 +14,12 @@
 #define idx_t uint64_t
 #define real_t double
 
-typedef struct _parallelTiming{
-    idx_t comm1Time, comm2Time, compTime;
-} parallelTiming;
 
 namespace SpKernels {
 
+typedef struct _parallelTiming{
+    idx_t comm1Time, comm2Time, compTime;
+} parallelTiming;
 
     typedef struct _triplet{
         idx_t row;
@@ -79,3 +80,4 @@ namespace SpKernels {
 
 }
 
+#endif

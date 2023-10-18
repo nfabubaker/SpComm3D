@@ -1,4 +1,5 @@
-#pragma once
+#ifndef _PARALLEL_IO_H
+#define _PARALLEL_IO_H
 #include <mpi.h>
 #include <iostream>
 
@@ -34,3 +35,4 @@ namespace SpKernels{
 }
 
 
+#endif

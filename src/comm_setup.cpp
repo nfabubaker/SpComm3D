@@ -88,7 +88,7 @@ void setup_3dsddmm_expand(denseMatrix& Aloc, denseMatrix& Bloc, coo_mtx& Cloc, v
             esc.sendBuff.at(esc.sendDisp.at(ploc+1)++) = i;
         }
     }
-    esc.perform_sparse_comm();
+    esc.perform_sparse_comm(false);
 
     /* now recv from each processor available in recvBuff */
     idx_t f = Aloc.n;
@@ -208,7 +208,7 @@ void setup_3dsddmm_reduce(coo_mtx& Cloc, SparseComm<real_t>& comm_reduce, MPI_Co
             rsc.sendBuff.at(rsc.sendDisp.at(gtlR.at(p)+1)++) = i;
 
     }
-    rsc.perform_sparse_comm();
+    rsc.perform_sparse_comm(false);
 
     comm_reduce.init(1, rsc.outDegree, rsc.inDegree, totSendCnt, totRecvCnt, SparseComm<real_t>::P2P, comm, MPI_COMM_NULL);
     comm_reduce.inSet = rsc.outSet;

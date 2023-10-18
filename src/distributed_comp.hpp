@@ -1,5 +1,5 @@
-
-#pragma once
+#ifndef _DISTRIBUTED_COMP_H
+#define _DISTRIBUTED_COMP_H
 #include "basic.hpp"
 #include "comm.hpp"
 namespace SpKernels{
@@ -20,3 +20,4 @@ namespace SpKernels{
             DenseComm& comm_post,
             coo_mtx& C);
 }
+#endif
