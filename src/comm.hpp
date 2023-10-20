@@ -61,7 +61,9 @@ namespace SpKernels {
                     inDegree = 0; outDegree = 0;
                     commP = MPI_COMM_NULL; commN = MPI_COMM_NULL;
                 }
-                void init(idx_t unitSize, int inDegree, int outDegree, idx_t totSendCnt, idx_t totRecvCnt, comm_T commt, MPI_Comm commP, MPI_Comm commN){
+                void init(idx_t unitSize, int inDegree, int outDegree, 
+                        idx_t totSendCnt, idx_t totRecvCnt,
+                        comm_T commt, MPI_Comm commP, MPI_Comm commN){
                     this->dataUnitSize = unitSize;
                     this->inDegree = outDegree;
                     this->outDegree = inDegree;

@@ -137,7 +137,10 @@ int main(int argc, char *argv[])
     int myxyrank;
     MPI_Comm_rank(xycomm, &myxyrank);  
     /* distribute Aloc and Bloc  */
-    distribute3D_AB_random(rpvec2D, cpvec2D, rpvec, cpvec, Cloc, f, xycomm);
+    //distribute3D_AB_random(rpvec2D, cpvec2D, rpvec, cpvec, Cloc, f, xycomm);
+    distribute3D_AB_respect_communication(rpvec2D, cpvec2D,
+            rpvec, cpvec,
+            Cloc, f, xycomm, zcomm, cartcomm);
     { /* distribute A,B and respect communication, setup sparse comm*/
 
         SparseComm<real_t> comm_expand;
@@ -154,33 +157,34 @@ int main(int argc, char *argv[])
         dist_sddmm_spcomm(Aloc, Bloc, Sloc, comm_expand, comm_reduce, Cloc);
     }
     /* instance #2: dense */
-    {
-        DenseComm comm_pre, comm_post;
-        coo_mtx Cloc;
-        denseMatrix Aloc, Bloc;
-        std::vector<idx_t> gtlR(Cloc.grows, -1), gtlC(Cloc.gcols, -1), ltgR, ltgC;
-        create_AB_Bcast(Cloc, floc, rpvec, cpvec, xycomm, Aloc, Bloc,
-                gtlR, gtlC, ltgR, ltgC);
-        /* re-map local rows/cols in Cloc */
-        for(auto& el : Cloc.elms){
-            idx_t lrid, lcid;
-            lrid = el.row; 
-            lcid = el.col;
-            el.row = gtlR[Cloc.ltgR[lrid]];
-            el.col = gtlC[Cloc.ltgC[lcid]];
-        }
-        setup_3dsddmm_bcast(Cloc,f,c, Aloc, Bloc, rpvec, cpvec,
-                xycomm, zcomm,  comm_pre, comm_post);
-        dist_sddmm_dcomm(Aloc, Bloc, Sloc, comm_pre, comm_post, Cloc);
-        /* re-map local rows/cols in Cloc */
-        for(auto& el : Cloc.elms){
-            idx_t lrid, lcid;
-            lrid = el.row; 
-            lcid = el.col;
-            el.row = Cloc.gtlR[ltgR[lrid]];
-            el.col = Cloc.gtlC[ltgC[lcid]];
-        }
-    }
+/*     {
+ *         DenseComm comm_pre, comm_post;
+ *         coo_mtx Cloc;
+ *         denseMatrix Aloc, Bloc;
+ *         std::vector<idx_t> gtlR(Cloc.grows, -1), gtlC(Cloc.gcols, -1), ltgR, ltgC;
+ *         create_AB_Bcast(Cloc, floc, rpvec, cpvec, xycomm, Aloc, Bloc,
+ *                 gtlR, gtlC, ltgR, ltgC);
+ *         // re-map local rows/cols in Cloc 
+ *         for(auto& el : Cloc.elms){
+ *             idx_t lrid, lcid;
+ *             lrid = el.row; 
+ *             lcid = el.col;
+ *             el.row = gtlR[Cloc.ltgR[lrid]];
+ *             el.col = gtlC[Cloc.ltgC[lcid]];
+ *         }
+ *         setup_3dsddmm_bcast(Cloc,f,c, Aloc, Bloc, rpvec, cpvec,
+ *                 xycomm, zcomm,  comm_pre, comm_post);
+ *         dist_sddmm_dcomm(Aloc, Bloc, Sloc, comm_pre, comm_post, Cloc);
+ *         // re-map local rows/cols in Cloc ///
+ *         for(auto& el : Cloc.elms){
+ *             idx_t lrid, lcid;
+ *             lrid = el.row; 
+ *             lcid = el.col;
+ *             el.row = Cloc.gtlR[ltgR[lrid]];
+ *             el.col = Cloc.gtlC[ltgC[lcid]];
+ *         }
+ *     }
+ */
     MPI_Finalize();
     return 0;
 }

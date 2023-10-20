@@ -45,6 +45,16 @@ namespace SpKernels {
             const idx_t f,
             MPI_Comm cartXYcomm);
     
+    void distribute3D_AB_respect_communication(
+            std::vector<int>& rpvec2D,
+            std::vector<int>& cpvec2D,
+            std::vector<int>& rpvec,
+            std::vector<int>& cpvec,
+            coo_mtx& Cloc,
+            const idx_t f,
+            MPI_Comm cartXYcomm,
+            MPI_Comm zcomm,
+            MPI_Comm world_comm);
 
 
 //    void distribute3D(coo_mtx& C, idx_t f, int c, MPI_Comm world_comm, coo_mtx& Cloc, denseMatrix& Aloc, 
