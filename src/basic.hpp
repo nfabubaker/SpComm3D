@@ -34,8 +34,10 @@ typedef struct _parallelTiming{
         std::vector<idx_t> ltg;
         std::vector<idx_t> gtl;
         inline real_t at(idx_t x, idx_t y){return data.at(x*n + y);}
-        void printMatrix(){
-            for (size_t i = 0; i < m; ++i) 
+        void printMatrix(idx_t count =0 ){
+            idx_t nrows = m;
+            if(count != 0) nrows = count / n;
+            for (size_t i = 0; i < nrows; ++i) 
                 for (size_t j = 0; j < n; ++j) 
                     std::cout << i << " " << j << " " << at(i,j) << std::endl; 
         }
@@ -43,6 +45,7 @@ typedef struct _parallelTiming{
 
     typedef struct _coo_mtx{
         std::string mtxName;
+        int rank, xyrank, zrank;
         idx_t lrows, lcols, lnnz, ownedNnz, grows, gcols, gnnz;
         std::vector<idx_t> ltgR, gtlR, ltgC, gtlC, lto, otl;
         std::vector<real_t> owned;
@@ -53,10 +56,20 @@ typedef struct _parallelTiming{
             this->elms.push_back(entry);
         }
 
-        void printMatrix(){
-            for (const triplet& t : elms) 
-                std::cout << t.row << " " << t.col << " " << t.val << std::endl; 
+        void printMatrix(int count = 0){
+            idx_t nr = (count == 0 ? lnnz : count); 
+            for (size_t i = 0; i < nr; ++i) 
+                std::cout << elms[i].row << " " << elms[i].col << " " << elms[i].val << std::endl; 
         }
+        void printOwnedMatrix(int count = 0){
+            idx_t nr = (count == 0 ? lnnz : count); 
+            for (size_t i = 0; i < lnnz; ++i) 
+                if(owners[i] == zrank){
+                std::cout << i <<": " << elms[i].row << " " << elms[i].col << " " << elms[i].val << std::endl; 
+                nr--; if(nr == 0) return;
+                }
+        }
+    
         void self_generate_random(idx_t nnz){
             srand(static_cast<unsigned int>(time(nullptr)));
             std::unordered_set<idx_t> usedIndices;

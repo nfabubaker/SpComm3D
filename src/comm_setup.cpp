@@ -88,7 +88,7 @@ void setup_3dsddmm_expand(denseMatrix& Aloc, denseMatrix& Bloc, coo_mtx& Cloc, v
             esc.sendBuff.at(esc.sendDisp.at(ploc+1)++) = i;
         }
     }
-    esc.perform_sparse_comm(false);
+    esc.perform_sparse_comm(false, false);
 
     /* now recv from each processor available in recvBuff */
     idx_t f = Aloc.n;
@@ -162,8 +162,14 @@ void setup_3dsddmm_reduce(coo_mtx& Cloc, SparseComm<real_t>& comm_reduce, MPI_Co
     MPI_Comm_rank(comm, &myrank);
     MPI_Comm_size(comm, &size);
     vector<idx_t> RecvCntPP(size, 0), SendCntPP(size, 0);    
+    /* I recv "my owned nnz" from each processor that is not me */
+    idx_t ownedCount = 0;
     for(size_t i =0; i < Cloc.lnnz; ++i){
-        RecvCntPP.at(Cloc.owners.at(i))++;
+        if(Cloc.owners.at(i) == myrank) 
+            ownedCount++;
+    }
+    for(int i = 0; i < size; ++i){
+        if(i != myrank) RecvCntPP[i] = ownedCount;
     }
     MPI_Alltoall(RecvCntPP.data(), 1, MPI_IDX_T, SendCntPP.data(),1,
             MPI_IDX_T, comm); 
@@ -204,11 +210,13 @@ void setup_3dsddmm_reduce(coo_mtx& Cloc, SparseComm<real_t>& comm_reduce, MPI_Co
     /* prepare send buffer: telling others what I want them to send me */
     for(size_t  i = 0; i < Cloc.lnnz; ++i){
         int p = Cloc.owners.at(i);
-        if(p != myrank)
-            rsc.sendBuff.at(rsc.sendDisp.at(gtlR.at(p)+1)++) = i;
+        if(p == myrank){
+            for(int j = 0; j < rsc.outDegree; ++j)
+                rsc.sendBuff.at(rsc.sendDisp.at(j+1)++) = i;
+        }
 
     }
-    rsc.perform_sparse_comm(false);
+    rsc.perform_sparse_comm(false, false);
 
     comm_reduce.init(1, rsc.outDegree, rsc.inDegree, totSendCnt, totRecvCnt, SparseComm<real_t>::P2P, comm, MPI_COMM_NULL);
     comm_reduce.inSet = rsc.outSet;
@@ -234,7 +242,7 @@ void setup_3dsddmm_reduce(coo_mtx& Cloc, SparseComm<real_t>& comm_reduce, MPI_Co
     for(int i = 0; i < rsc.outDegree; ++i){
         idx_t disp = rsc.sendDisp.at(i);
         for(idx_t j =0 ; j < rsc.sendCount.at(i); ++j){
-            comm_reduce.recvptr.at(disp+j) = &Cloc.elms[rsc.sendBuff.at(disp+j)].val; 
+            comm_reduce.recvptr.at(disp+j) = &(Cloc.elms[rsc.sendBuff.at(disp+j)].val); 
         }
     }
     Cloc.ownedNnz = 0;
@@ -278,7 +286,9 @@ void SpKernels::setup_3dsddmm_bcast(
         const MPI_Comm xycomm,
         const MPI_Comm zcomm,
         DenseComm& comm_pre,
-        DenseComm& comm_post
+        DenseComm& comm_post,
+        std::vector<idx_t>& mapA, 
+        std::vector<idx_t>& mapB
         )
 {
 
@@ -303,39 +313,55 @@ void SpKernels::setup_3dsddmm_bcast(
     comm_pre.bcastYcnt.resize(comm_pre.outDegreeY,0);
     comm_pre.bcastXdisp.resize(comm_pre.outDegreeX+1, 0);
     comm_pre.bcastYdisp.resize(comm_pre.outDegreeY+1,0);
-    vector<int> rpvecX(Aloc.m), cpvecY(Bloc.m);
+    vector<int> rpvecX(Cloc.lrows), cpvecY(Cloc.lcols);
     idx_t tt = 0;
+    for(size_t i = 0; i < Cloc.lrows; ++i){
+        /* first, identify if the row belongs to my group*/
+        MPI_Cart_coords(xycomm, rpvec[Cloc.ltgR[i]], 2, tarr1.data());
+        if(tarr1[0]  == myxcoord){
+            rpvecX[tt++] = tarr1[1];
+        }
+    }
+    tt = 0;
+    for(size_t i = 0; i < Cloc.lcols; ++i){
+        MPI_Cart_coords(xycomm, cpvec[Cloc.ltgC[i]], 2, tarr1.data());
+        if(tarr1[1]  == myycoord){ 
+            cpvecY[tt++] = tarr1[0];
+        }
+    }
     for(size_t i = 0; i < Cloc.grows; ++i){
         /* first, identify if the row belongs to my group*/
         MPI_Cart_coords(xycomm, rpvec[i], 2, tarr1.data());
         if(tarr1[0]  == myxcoord){
-            rpvecX[tt++] = tarr1[1];
             comm_pre.bcastXcnt[tarr1[1]]++;
         }
     }
-    tt = 0;
     for(size_t i = 0; i < Cloc.gcols; ++i){
         MPI_Cart_coords(xycomm, cpvec[i], 2, tarr1.data());
         if(tarr1[1]  == myycoord){ 
-            cpvecY[tt++] = tarr1[0];
             comm_pre.bcastYcnt[tarr1[0]]++;
         }
     }
+
     for(size_t i = 1; i < X+1; ++i) {
         comm_pre.bcastXdisp[i] = comm_pre.bcastXdisp[i-1] + comm_pre.bcastXcnt[i-1];} 
     for(size_t i = 1; i < Y+1; ++i) {
         comm_pre.bcastYdisp[i] = comm_pre.bcastYdisp[i-1] + comm_pre.bcastYcnt[i-1];} 
 
-/*     vector<idx_t> mapA(Aloc.m), mapB(Bloc.m);
- * 
- * 
- *     for (size_t i = 0; i < Aloc.m; ++i) mapA[i] = comm_pre.bcastXdisp[rpvecX[i]+1]++; 
- *     for (size_t i = 0; i < Bloc.m; ++i) mapB[i] = comm_pre.bcastYdisp[cpvecY[i]+1]++; 
- *     for (size_t i = 0; i < Cloc.grows; ++i)
+    for (size_t i = 0; i < Cloc.lrows; ++i) mapA[i] = comm_pre.bcastXdisp[rpvecX[i]]++; 
+    for (size_t i = 0; i < Cloc.lcols; ++i) mapB[i] = comm_pre.bcastYdisp[cpvecY[i]]++; 
+/*     for (size_t i = 0; i < Cloc.grows; ++i)
  *         if(Cloc.gtlR[i] != -1) Cloc.gtlR.at(i) = mapA[Cloc.gtlR.at(i)]; 
  *     for (size_t i = 0; i < Cloc.gcols; ++i)
  *         if(Cloc.gtlC[i] != -1) Cloc.gtlC.at(i) = mapB[Cloc.gtlC.at(i)]; 
  */
+
+    std::fill(comm_pre.bcastXdisp.begin(), comm_pre.bcastXdisp.end(), 0);
+    std::fill(comm_pre.bcastYdisp.begin(), comm_pre.bcastYdisp.end(), 0);
+    for(size_t i = 1; i < X+1; ++i) {
+        comm_pre.bcastXdisp[i] = comm_pre.bcastXdisp[i-1] + comm_pre.bcastXcnt[i-1];} 
+    for(size_t i = 1; i < Y+1; ++i) {
+        comm_pre.bcastYdisp[i] = comm_pre.bcastYdisp[i-1] + comm_pre.bcastYcnt[i-1];} 
 
     for(size_t i = 0; i < X; ++i) {
         comm_pre.bcastXcnt[i] *= Aloc.n;

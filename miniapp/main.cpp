@@ -90,6 +90,18 @@ optional_argument: "::" */
 
 }
 
+void print_numerical_sum(coo_mtx& C, MPI_Comm zcomm, MPI_Comm worldcomm){
+    real_t sum = 0.0;
+    int myzrank, myworldrank;
+    MPI_Comm_rank(zcomm, &myzrank);
+    MPI_Comm_rank(worldcomm, &myworldrank);
+    for(size_t i = 0; i < C.lnnz; ++i){
+        if(C.owners.at(i) == myzrank) 
+            sum += C.elms.at(i).val;
+    }
+    printf("Numerical sum at p%d = %.2f\n", myworldrank, sum );
+}
+
 int main(int argc, char *argv[])
 {
     MPI_Init(&argc, &argv);
@@ -120,6 +132,7 @@ int main(int argc, char *argv[])
     }
     coo_mtx Cloc, Sloc;
     Cloc.mtxName = mtxName;
+    Sloc.mtxName = mtxName;
     {
         coo_mtx S;
         mm _mm(filename); 
@@ -132,6 +145,9 @@ int main(int argc, char *argv[])
         for(auto& elm : Cloc.elms) elm.val = 0.0;
 
     }
+    Cloc.rank = rank;
+    MPI_Comm_rank(zcomm, &Cloc.zrank);
+    Sloc.rank = rank;
     std::array<int, 3> remaindims = {true, true, false};
     MPI_Cart_sub(cartcomm, remaindims.data(), &xycomm); 
     int myxyrank;
@@ -151,40 +167,63 @@ int main(int argc, char *argv[])
 
         Aloc.m = Cloc.lrows; Aloc.n = floc;
         Bloc.m = Cloc.lcols; Bloc.n = floc;
-        Aloc.data.resize(Aloc.m * Aloc.n, 1);
-        Bloc.data.resize(Bloc.m * Bloc.n, 1);
+        Aloc.data.resize(Aloc.m * Aloc.n, myxyrank+1);
+        Bloc.data.resize(Bloc.m * Bloc.n, myxyrank+1);
         setup_3dsddmm(Cloc, f, c, xycomm, zcomm, Aloc, Bloc, rpvec, cpvec, comm_expand, comm_reduce); 
+
         dist_sddmm_spcomm(Aloc, Bloc, Sloc, comm_expand, comm_reduce, Cloc);
+        print_numerical_sum(Cloc, zcomm, cartcomm);
     }
     /* instance #2: dense */
-/*     {
- *         DenseComm comm_pre, comm_post;
- *         coo_mtx Cloc;
- *         denseMatrix Aloc, Bloc;
- *         std::vector<idx_t> gtlR(Cloc.grows, -1), gtlC(Cloc.gcols, -1), ltgR, ltgC;
- *         create_AB_Bcast(Cloc, floc, rpvec, cpvec, xycomm, Aloc, Bloc,
- *                 gtlR, gtlC, ltgR, ltgC);
- *         // re-map local rows/cols in Cloc 
- *         for(auto& el : Cloc.elms){
- *             idx_t lrid, lcid;
- *             lrid = el.row; 
- *             lcid = el.col;
- *             el.row = gtlR[Cloc.ltgR[lrid]];
+    {
+        for(auto& elm : Cloc.elms) elm.val = 0.0;
+        DenseComm comm_pre, comm_post;
+        denseMatrix Aloc, Bloc;
+        std::vector<idx_t> gtlR(Cloc.grows, -1), gtlC(Cloc.gcols, -1), ltgR, ltgC;
+        std::vector<idx_t> mapA(Cloc.lrows), mapB(Cloc.lcols);
+        create_AB_Bcast(Cloc, floc, rpvec, cpvec, xycomm, Aloc, Bloc,
+                gtlR, gtlC, ltgR, ltgC);
+        std::vector<idx_t> mapAI(Aloc.m), mapBI(Bloc.m);
+        setup_3dsddmm_bcast(Cloc,f,c, Aloc, Bloc, rpvec, cpvec,
+                xycomm, zcomm,  comm_pre, comm_post, mapA, mapB);
+        for(idx_t i = 0; i < Cloc.lrows; ++i) mapAI[mapA[i]] = i;
+        for(idx_t i = 0; i < Cloc.lcols; ++i) mapBI[mapB[i]] = i;
+        // re-map local rows/cols in Cloc 
+        for(size_t i = 0; i < Cloc.lnnz; ++i){
+            idx_t lrid, lcid;
+            auto& el = Cloc.elms.at(i);
+            auto& elS = Sloc.elms.at(i);
+            lrid = el.row; 
+            lcid = el.col;
+/*             el.row = gtlR[Cloc.ltgR[lrid]];
  *             el.col = gtlC[Cloc.ltgC[lcid]];
- *         }
- *         setup_3dsddmm_bcast(Cloc,f,c, Aloc, Bloc, rpvec, cpvec,
- *                 xycomm, zcomm,  comm_pre, comm_post);
- *         dist_sddmm_dcomm(Aloc, Bloc, Sloc, comm_pre, comm_post, Cloc);
- *         // re-map local rows/cols in Cloc ///
- *         for(auto& el : Cloc.elms){
- *             idx_t lrid, lcid;
- *             lrid = el.row; 
- *             lcid = el.col;
- *             el.row = Cloc.gtlR[ltgR[lrid]];
- *             el.col = Cloc.gtlC[ltgC[lcid]];
- *         }
- *     }
  */
+            el.row = mapA[lrid];
+            el.col = mapB[lcid];
+            elS.row = el.row;
+            elS.col = el.col;
+        }
+        dist_sddmm_dcomm(Aloc, Bloc, Sloc, comm_pre, comm_post, Cloc);
+        // re-map local rows/cols in Cloc ///
+        for(size_t i = 0; i < Cloc.lnnz; ++i){
+            idx_t lrid, lcid;
+            auto& el = Cloc.elms.at(i);
+            auto& elS = Sloc.elms.at(i);
+            lrid = el.row; 
+            lcid = el.col;
+            el.row = mapAI[lrid];
+            el.col = mapBI[lcid];
+            elS.row = el.row;
+            elS.col = el.col;
+        }
+            if(Cloc.rank == 0){
+                std::cout << "Cloc final:" << std::endl;
+                Cloc.printOwnedMatrix(10);
+            }
+
+    print_numerical_sum(Cloc, zcomm, cartcomm);
+    }
+
     MPI_Finalize();
     return 0;
 }

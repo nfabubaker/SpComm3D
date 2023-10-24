@@ -98,8 +98,8 @@ namespace SpKernels {
                 else sendBuff[idx++] = *sendptr[i];
             }
         }
-        void perform_sparse_comm(bool copyflag = true){
-            if(copyflag) copy_to_sendbuff();
+        void perform_sparse_comm(bool sendcopyflag = true, bool recvcopyflag=true){
+            if(sendcopyflag) copy_to_sendbuff();
             /* TODO implement more efficient Irecv .. etc */
             if(commT == P2P){ 
                 if(commP == MPI_COMM_NULL) goto ERR_EXIT;
@@ -124,7 +124,7 @@ namespace SpKernels {
                         recvCount.data(), recvDisp.data(),
                         mpi_get_type(), commN);
             }
-            if(copyflag) copy_from_recvbuff();
+            if(recvcopyflag) copy_from_recvbuff();
             return;
 
 ERR_EXIT:
@@ -184,18 +184,20 @@ ERR_EXIT:
             SparseComm<real_t>& comm_expand,
             SparseComm<real_t>& comm_reduce
             );
-    void setup_3dsddmm_bcast(
-            coo_mtx& Cloc,
-            const idx_t f,
-            const int c,
-            denseMatrix& Aloc,
-            denseMatrix& Bloc, 
-            std::vector<int>& rpvec, 
-            std::vector<int>& cpvec,
-            const MPI_Comm xycomm,
-            const MPI_Comm zcomm,
-            DenseComm& comm_pre,
-            DenseComm& comm_post
-            );
+void setup_3dsddmm_bcast(
+        coo_mtx& Cloc,
+        const idx_t f,
+        const int c,
+        denseMatrix& Aloc,
+        denseMatrix& Bloc, 
+        std::vector<int>& rpvec, 
+        std::vector<int>& cpvec,
+        const MPI_Comm xycomm,
+        const MPI_Comm zcomm,
+        DenseComm& comm_pre,
+        DenseComm& comm_post,
+        std::vector<idx_t>& mapA, 
+        std::vector<idx_t>& mapB
+        );
 }
 #endif

@@ -20,25 +20,35 @@ void dist_sddmm_spcomm(
 
             parallelTiming pt; 
             auto start = chrono::high_resolution_clock::now();
-            comm_pre.copy_to_sendbuff();
             comm_pre.perform_sparse_comm();
-            comm_pre.copy_from_recvbuff();
             auto stop = chrono::high_resolution_clock::now();
             pt.comm1Time = chrono::duration_cast<chrono::milliseconds>(stop-start).count(); 
+            if(C.rank == 0){
+                std::cout << "Aloc before sddmm (sp):" << std::endl;
+                //C.printOwnedMatrix(10);
+                A.printMatrix(10);
+            }
             start = chrono::high_resolution_clock::now();
             sddmm(A,B,S,C);
             stop = chrono::high_resolution_clock::now();
             pt.compTime = chrono::duration_cast<chrono::milliseconds>(stop-start).count();
+            if(C.rank == 0){
+                std::cout << "Cloc after sddmm:" << std::endl;
+                C.printOwnedMatrix(10);
+            }
             start = chrono::high_resolution_clock::now();
-            comm_post.copy_to_sendbuff();
-            comm_post.perform_sparse_comm();
+            comm_post.perform_sparse_comm(true,false);
             comm_post.SUM_from_recvbuff();
             stop = chrono::high_resolution_clock::now();
             pt.comm2Time = chrono::duration_cast<chrono::milliseconds>(stop-start).count();
+            if(C.rank == 0){
+                std::cout << "Cloc after sparse reduce:" << std::endl;
+                C.printOwnedMatrix(10);
+            }
             /*         MPI_Barrier(MPI_COMM_WORLD);
              *         if(rank == 0){
              *             std::cout << "Cloc after reduce:" << std::endl;
-             *             Cloc.printMatrix();
+             *             Cloc.printOwnedMatrix(10);
              *         }
              */
             MPI_Barrier(MPI_COMM_WORLD);
@@ -61,14 +71,31 @@ void dist_sddmm_spcomm(
             comm_pre.perform_dense_comm();
             auto stop = chrono::high_resolution_clock::now();
             pt.comm1Time = chrono::duration_cast<chrono::milliseconds>(stop-start).count(); 
+            if(C.rank == 0){
+                std::cout << "Aloc before sddmm (dense):" << std::endl;
+                //C.printOwnedMatrix(10);
+                A.printMatrix(10);
+            }
+            if(C.rank == 0){
+                std::cout << "Cloc before sddmm:" << std::endl;
+                C.printOwnedMatrix(10);
+            }
             start = chrono::high_resolution_clock::now();
             sddmm(A, B,S, C);
+            if(C.rank == 0){
+                std::cout << "Cloc after sddmm:" << std::endl;
+                C.printOwnedMatrix(10);
+            }
             stop = chrono::high_resolution_clock::now();
             pt.compTime = chrono::duration_cast<chrono::milliseconds>(stop-start).count(); 
             start = chrono::high_resolution_clock::now();
             comm_post.perform_dense_comm();
             stop = chrono::high_resolution_clock::now();
             pt.comm2Time = chrono::duration_cast<chrono::milliseconds>(stop-start).count(); 
+            if(C.rank == 0){
+                std::cout << "Cloc after dense comm:" << std::endl;
+                C.printOwnedMatrix(10);
+            }
 /*             for(size_t i = 0; i < Cloc.ownedNnz; ++i){
  *                 idx_t lidx = Cloc.otl[i];
  *                 Cloc.elms[lidx].val *= Cloc.owned[i];
@@ -77,7 +104,7 @@ void dist_sddmm_spcomm(
             /*         MPI_Barrier(MPI_COMM_WORLD);
              *         if(rank == 0){
              *             std::cout << "Cloc after reduce:" << std::endl;
-             *             Cloc.printMatrix();
+             *             Cloc.printOwnedMatrix(10);
              *         }
              */
             MPI_Barrier(MPI_COMM_WORLD);
