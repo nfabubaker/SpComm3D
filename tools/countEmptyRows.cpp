@@ -1,11 +1,6 @@
-#include "../src/basic.hpp"
-#include "../src/parallel_io.hpp"
-#include <cstdlib>
-#include <fstream>
-#include <getopt.h>
+#include "../src/mm.hpp"
 #include <algorithm>
-#include <ios>
-#include <string>
+#include <getopt.h>
 
 
 
@@ -76,22 +71,26 @@ void parse_arguments(int argc, char* argv[], int& X, int& Y, int&Z, string& inFN
 }
 
 
-
 int main(int argc, char *argv[])
 {
-    string inFN="", outFN = "";
+    string inFN, outFN = "";
     int X, Y, Z;
 
     parse_arguments(argc, argv, X, Y, Z, inFN, outFN);
-
-
+    {
+        SpKernels::mm _mm(inFN);
         SpKernels::coo_mtx C;
-        vector<int> rpvec2D, cpvec2D;
-        SpKernels::read_bin_parallel_distribute(inFN, C, rpvec2D, cpvec2D, xycomm, MPI_Comm zcomm);
-        cout << C.grows << C.gcols << C.gnnz << endl;
-        C.printMatrix(C.gnnz);
-
+        C = _mm.read_mm(inFN);
+        vector<bool> rowsF(C.grows, false), colsF(C.gcols, false);
+        for(auto& el : C.elms){
+            rowsF.at(el.row) = true; 
+            colsF.at(el.col) = true;
+        }
+        idx_t emptyRows = count(rowsF.begin(), rowsF.end(), false);
+        idx_t emptyCols = count(colsF.begin(), colsF.end(), false);
+        cout << "empty rows: "<<emptyRows << " empty cols: " << emptyCols << endl;
     }
     
     return 0;
 }
+

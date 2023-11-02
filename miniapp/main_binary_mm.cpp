@@ -10,10 +10,7 @@
 #include <chrono>
 #include "distribute.hpp"
 #include "distributed_comp.hpp"
-
-
-
-
+#include "parallel_io.hpp"
 
 
 using namespace SpKernels; 
@@ -130,16 +127,19 @@ int main(int argc, char *argv[])
         int myzcoord = tdims[2];
         if(myzcoord < f% Z) ++floc;
     }
+    std::array<int, 3> remaindims = {true, true, false};
+    MPI_Cart_sub(cartcomm, remaindims.data(), &xycomm); 
+    int myxyrank;
+    MPI_Comm_rank(xycomm, &myxyrank);  
+    remaindims = {false, false, true};
+    MPI_Cart_sub(cartcomm, remaindims.data(), &zcomm); 
     coo_mtx Cloc, Sloc;
     Cloc.mtxName = mtxName;
     Sloc.mtxName = mtxName;
     {
-        coo_mtx S;
-        mm _mm(filename); 
-        if(rank == 0)
-            S = _mm.read_mm(filename); 
         /* distribute C */
-        distribute3D_C(S, Sloc, rpvec2D, cpvec2D, cartcomm, &zcomm); 
+        read_bin_parallel_distribute(filename, Sloc, rpvec2D, cpvec2D,
+                cartcomm,xycomm, zcomm);
         /* copy C to S and reset values in S */
         Cloc = Sloc;
         for(auto& elm : Cloc.elms) elm.val = 0.0;
@@ -148,10 +148,6 @@ int main(int argc, char *argv[])
     Cloc.rank = rank;
     MPI_Comm_rank(zcomm, &Cloc.zrank);
     Sloc.rank = rank;
-    std::array<int, 3> remaindims = {true, true, false};
-    MPI_Cart_sub(cartcomm, remaindims.data(), &xycomm); 
-    int myxyrank;
-    MPI_Comm_rank(xycomm, &myxyrank);  
     /* distribute Aloc and Bloc  */
     //distribute3D_AB_random(rpvec2D, cpvec2D, rpvec, cpvec, Cloc, f, xycomm);
     distribute3D_AB_respect_communication(rpvec2D, cpvec2D,
@@ -216,6 +212,7 @@ int main(int argc, char *argv[])
             elS.row = el.row;
             elS.col = el.col;
         }
+
     print_numerical_sum(Cloc, zcomm, cartcomm);
     }
 

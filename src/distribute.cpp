@@ -264,10 +264,26 @@ namespace SpKernels {
        std::vector<int> lpvec(myrowsend - myrowsstart, -1);
       
 
-       std::array<int, 3> dims;
-
+       std::array<int, 3> dims, tarr1, tarr2;
+       /* get the dims */
+       MPI_Cart_get(world_comm, 3, dims.data(), tarr1.data(), tarr2.data()); 
+       int X = dims[0], Y = dims[1];
+       int currDimSize = (vtype == 0 ? Y : X);
+       int tcnt = 0;
        for(idx_t i = 0; i < (myrowsend - myrowsstart); ++i){
-           std::random_shuffle(rows_sets[i].begin(), rows_sets[i].end());
+            if(rows_sets[i].size() == 0){
+                if(vtype ==0){
+                    tarr1[0] = pvec2D[i+myrowsstart];
+                    tarr1[1] = tcnt++ % currDimSize;
+                }
+                else{
+                    tarr1[1] = pvec2D[i+myrowsstart];
+                    tarr1[0] = tcnt++ % currDimSize;
+                }
+                MPI_Cart_rank(world_comm, tarr1.data(), &lpvec[i]);
+                continue;
+            }
+            std::random_shuffle(rows_sets[i].begin(), rows_sets[i].end());
             int rdn = rand() % rows_sets[i].size();
             lpvec[i] = rows_sets[i].at(rdn);
             MPI_Cart_coords(world_comm, lpvec[i], 3, dims.data()); 
@@ -315,13 +331,17 @@ namespace SpKernels {
         //MPI_Cart_get(cartXYcomm, 2, dims.data(), t1.data(), t2.data());
         //X = dims[0]; Y=dims[1]; 
         for(size_t i = 0; i < Cloc.grows; ++i){
-            MPI_Cart_coords(cartXYcomm, rpvec[i], 2, dims.data());
-            assert(dims[0] == rpvec2D[i]);
+            if(rpvec[i] != -1){
+                MPI_Cart_coords(cartXYcomm, rpvec[i], 2, dims.data());
+                assert(dims[0] == rpvec2D[i]);
+            }
 
         }
         for(size_t i = 0; i < Cloc.gcols; ++i){
-            MPI_Cart_coords(cartXYcomm, cpvec[i], 2, dims.data());
-            assert(dims[1] == cpvec2D[i]);
+            if(cpvec[i] != -1){
+                MPI_Cart_coords(cartXYcomm, cpvec[i], 2, dims.data());
+                assert(dims[1] == cpvec2D[i]);
+            }
         }
         
 

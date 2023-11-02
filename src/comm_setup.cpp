@@ -75,14 +75,14 @@ void setup_3dsddmm_expand(denseMatrix& Aloc, denseMatrix& Bloc, coo_mtx& Cloc, v
     /* Tell processors what rows/cols you want from them */
     /* 1 - determine what to send */
     for ( size_t i = 0; i < Cloc.grows; ++i) {
-        int ploc = gtlR.at(rpvec.at(i)); 
+        int ploc = (rpvec[i] == -1 ? -1 : gtlR.at(rpvec.at(i))); 
         if( ploc != -1 && myRows.at(i)) {
             esc.sendBuff.at(esc.sendDisp.at(ploc+1)++) = 0;
             esc.sendBuff.at(esc.sendDisp.at(ploc+1)++) = i;
         }
     }
     for ( size_t i = 0; i < Cloc.gcols; ++i) {
-        int ploc = gtlR.at(cpvec.at(i));
+        int ploc = (cpvec[i] == -1 ? -1 : gtlR.at(cpvec.at(i))); 
         if(ploc != -1 && myCols.at(i)){ 
             esc.sendBuff.at(esc.sendDisp.at(ploc+1)++) = 1;
             esc.sendBuff.at(esc.sendDisp.at(ploc+1)++) = i;

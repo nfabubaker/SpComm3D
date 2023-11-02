@@ -123,14 +123,15 @@ int main(int argc, char *argv[])
         C = _mm.read_mm(inFN);
         convert_to_binary(C, outFN);
     }
-    {
-
-        SpKernels::coo_mtx C;
-        test_binary_serial(outFN, C);
-        cout << C.grows << C.gcols << C.gnnz << endl;
-        C.printMatrix(C.gnnz);
-
-    }
+/*     {
+ * 
+ *         SpKernels::coo_mtx C;
+ *         test_binary_serial(outFN, C);
+ *         cout << C.grows << C.gcols << C.gnnz << endl;
+ *         C.printMatrix(C.gnnz);
+ * 
+ *     }
+ */
     
     return 0;
 }
