@@ -305,7 +305,7 @@ void SpKernels::setup_3dsddmm_bcast(
     /* setup Bcast comm */
     comm_pre.OP = 0;
     comm_pre.commX = xcomm; comm_pre.commY = ycomm;
-    comm_pre.rqstsX.resize(X); comm_pre.rqstsY.resize(Y);
+    comm_pre.rqstsX.resize(Y); comm_pre.rqstsY.resize(X);
     comm_pre.outDegreeX = dims[1]; comm_pre.outDegreeY = dims[0]; 
     comm_pre.bufferptrX = Aloc.data.data();
     comm_pre.bufferptrY = Bloc.data.data();
@@ -343,9 +343,9 @@ void SpKernels::setup_3dsddmm_bcast(
         }
     }
 
-    for(size_t i = 1; i < X+1; ++i) {
-        comm_pre.bcastXdisp[i] = comm_pre.bcastXdisp[i-1] + comm_pre.bcastXcnt[i-1];} 
     for(size_t i = 1; i < Y+1; ++i) {
+        comm_pre.bcastXdisp[i] = comm_pre.bcastXdisp[i-1] + comm_pre.bcastXcnt[i-1];} 
+    for(size_t i = 1; i < X+1; ++i) {
         comm_pre.bcastYdisp[i] = comm_pre.bcastYdisp[i-1] + comm_pre.bcastYcnt[i-1];} 
 
     for (size_t i = 0; i < Cloc.lrows; ++i) mapA[i] = comm_pre.bcastXdisp[rpvecX[i]]++; 
@@ -358,16 +358,16 @@ void SpKernels::setup_3dsddmm_bcast(
 
     std::fill(comm_pre.bcastXdisp.begin(), comm_pre.bcastXdisp.end(), 0);
     std::fill(comm_pre.bcastYdisp.begin(), comm_pre.bcastYdisp.end(), 0);
-    for(size_t i = 1; i < X+1; ++i) {
-        comm_pre.bcastXdisp[i] = comm_pre.bcastXdisp[i-1] + comm_pre.bcastXcnt[i-1];} 
     for(size_t i = 1; i < Y+1; ++i) {
+        comm_pre.bcastXdisp[i] = comm_pre.bcastXdisp[i-1] + comm_pre.bcastXcnt[i-1];} 
+    for(size_t i = 1; i < X+1; ++i) {
         comm_pre.bcastYdisp[i] = comm_pre.bcastYdisp[i-1] + comm_pre.bcastYcnt[i-1];} 
 
-    for(size_t i = 0; i < X; ++i) {
+    for(size_t i = 0; i < Y; ++i) {
         comm_pre.bcastXcnt[i] *= Aloc.n;
         comm_pre.bcastXdisp[i] *= Aloc.n;
     }
-    for(size_t i = 0; i < Y; ++i) {
+    for(size_t i = 0; i < X; ++i) {
         comm_pre.bcastYcnt[i] *= Bloc.n;
         comm_pre.bcastYdisp[i] *= Bloc.n;
     }

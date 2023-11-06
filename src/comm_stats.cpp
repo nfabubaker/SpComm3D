@@ -1,6 +1,8 @@
 #include "comm.hpp"
+#include "mpi.h"
 #include <cstdint>
 #include <numeric>
+#include <sstream>
 #include <string>
 
 namespace SpKernels{
@@ -24,7 +26,7 @@ void get_comm_stats(std::string mtxName, idx_t f, int c, MPI_Comm comm, idx_t my
  *     MPI_Cart_get(comm, 3, tarr1.data(), tarr2.data(), tarr3.data()); 
  */
     if(myrank == 0){
-        char buff[512];
+        char buff[1024];
         if(sizeof(idx_t) == sizeof(uint32_t))
             sprintf(buff,"%s %d %d %d %.2f %.2f %.2f %.2f %u %u %u %u",
                 mtxName.c_str(), size, f,c, 
@@ -41,7 +43,7 @@ void get_comm_stats(std::string mtxName, idx_t f, int c, MPI_Comm comm, idx_t my
 }
 
 void get_timing_stats(idx_t mycomm1time, idx_t mycomm2time, idx_t mycomptime,  MPI_Comm comm, std::string& retStr){
-    uint32_t gcomm1Time, gcomm2Time, gcompTime;
+    idx_t gcomm1Time, gcomm2Time, gcompTime;
     MPI_Reduce(&mycomm1time, &gcomm1Time, 1, MPI_IDX_T, MPI_MAX, 0, comm);
     MPI_Reduce(&mycomm2time, &gcomm2Time, 1, MPI_IDX_T, MPI_MAX, 0, comm);
     MPI_Reduce(&mycomptime, &gcompTime, 1, MPI_IDX_T, MPI_MAX, 0, comm);
@@ -49,9 +51,11 @@ void get_timing_stats(idx_t mycomm1time, idx_t mycomm2time, idx_t mycomptime,  M
     int myrank;
     MPI_Comm_rank(comm, &myrank);
     if(myrank == 0){
-        char buff[512];
-        sprintf(buff,"%u %u %u", gcomm1Time, gcomm2Time, gcompTime);
-        retStr = buff;
+        char buff[1024];
+        std::ostringstream ss; 
+        //sprintf(buff,"%u %u %u", gcomm1Time, gcomm2Time, gcompTime);
+        ss << gcomm1Time<<" " << gcomm2Time <<" "<< gcompTime;
+        retStr = ss.str();
     }
 }
 

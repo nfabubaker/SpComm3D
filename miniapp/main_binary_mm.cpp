@@ -113,7 +113,6 @@ int main(int argc, char *argv[])
     std::string mtxName = filename.substr(0, p);
     mtxName = mtxName.substr(mtxName.find_last_of("/\\") +1);
     std::vector<int> rpvec, cpvec;
-    std:: vector<int> rpvec2D, cpvec2D;
     std::array<int, 3> dims = {0,0,c};
     std::array<int,3> zeroArr ={0,0,0};
     std::array<int,3> tdims ={0,0,0};
@@ -137,14 +136,18 @@ int main(int argc, char *argv[])
     Cloc.mtxName = mtxName;
     Sloc.mtxName = mtxName;
     {
+        std:: vector<int> rpvec2D, cpvec2D;
         /* distribute C */
-        read_bin_parallel_distribute(filename, Sloc, rpvec2D, cpvec2D,
+        read_bin_parallel_distribute(filename, Cloc, rpvec2D, cpvec2D,
                 cartcomm,xycomm, zcomm);
         /* copy C to S and reset values in S */
-        Cloc = Sloc;
+        Sloc.elms = Cloc.elms;
+        Sloc.lnnz = Cloc.lnnz;
+        Sloc.gcols = Cloc.gcols; Sloc.grows = Cloc.grows;
+        Sloc.lcols = Cloc.lcols; Sloc.lrows = Cloc.lrows;
         for(auto& elm : Cloc.elms) elm.val = 0.0;
 
-    }
+    
     Cloc.rank = rank;
     MPI_Comm_rank(zcomm, &Cloc.zrank);
     Sloc.rank = rank;
@@ -153,6 +156,7 @@ int main(int argc, char *argv[])
     distribute3D_AB_respect_communication(rpvec2D, cpvec2D,
             rpvec, cpvec,
             Cloc, f, xycomm, zcomm, cartcomm);
+    }
     { /* distribute A,B and respect communication, setup sparse comm*/
 
         SparseComm<real_t> comm_expand;
