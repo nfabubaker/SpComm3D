@@ -11,13 +11,17 @@ namespace SpKernels{
             coo_mtx& S,
             SparseComm<real_t>& comm_pre,
             SparseComm<real_t>& comm_post,
-            coo_mtx& C);
+            coo_mtx& C,
+            MPI_Comm comm
+            );
     void dist_sddmm_dcomm(
             denseMatrix& A,
             denseMatrix& B,
             coo_mtx& S,
             DenseComm& comm_pre,
             DenseComm& comm_post,
-            coo_mtx& C);
+            coo_mtx& C,
+            MPI_Comm comm
+            );
 }
 #endif

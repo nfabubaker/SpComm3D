@@ -9,6 +9,8 @@
 #include <iostream>
 #include <unordered_set>
 #include <cassert>
+#include <unordered_map>
+
 
 
 #define idx_t uint64_t
@@ -47,7 +49,8 @@ typedef struct _parallelTiming{
         std::string mtxName;
         int rank, xyrank, zrank;
         idx_t lrows, lcols, lnnz, ownedNnz, grows, gcols, gnnz;
-        std::vector<idx_t> ltgR, gtlR, ltgC, gtlC, lto, otl;
+        std::vector<idx_t> ltgR, ltgC, lto, otl;
+        std::unordered_map<idx_t, idx_t> gtlR, gtlC;
         std::vector<real_t> owned;
         std::vector<int> owners; /* owner per local nnz */
         std::vector<triplet> elms;

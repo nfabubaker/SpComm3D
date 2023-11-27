@@ -137,16 +137,16 @@ namespace SpKernels{
             if(Sloc.owners[i] == myzrank) Sloc.ownedNnz++;
         }
         Sloc.ltgR.clear(); Sloc.ltgC.clear(); 
-        Sloc.gtlR.resize(Sloc.grows, -1); Sloc.gtlC.resize(Sloc.gcols, -1);
+        //Sloc.gtlR.resize(Sloc.grows, -1); Sloc.gtlC.resize(Sloc.gcols, -1);
         Sloc.lrows = 0; Sloc.lcols = 0;
         for(size_t i = 0; i < Sloc.lnnz; ++i){
             idx_t rid = Sloc.elms.at(i).row;
             idx_t cid = Sloc.elms.at(i).col;
-            if( Sloc.gtlR[rid] == -1){
+            if( Sloc.gtlR.find(rid) == Sloc.gtlR.end()){
                 Sloc.gtlR[rid] = Sloc.lrows++;
                 Sloc.ltgR.push_back(rid);
             }
-            if( Sloc.gtlC[cid] == -1){
+            if( Sloc.gtlC.find(cid) == Sloc.gtlC.end()){
                 Sloc.gtlC[cid] = Sloc.lcols++;
                 Sloc.ltgC.push_back(cid);
             }

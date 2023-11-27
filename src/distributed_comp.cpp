@@ -16,7 +16,12 @@ void dist_sddmm_spcomm(
             coo_mtx& S,
             SparseComm<real_t>& comm_pre,
             SparseComm<real_t>& comm_post,
-            coo_mtx& C){
+            coo_mtx& C,
+            MPI_Comm comm){
+            int X,Y,Z;
+            std::array<int, 3> dims, t1, t2;
+            MPI_Cart_get(comm, 3, dims.data(), t1.data(), t2.data());
+            X = dims[0]; Y=dims[1]; Z=dims[2];
 
             parallelTiming pt; 
             auto start = chrono::high_resolution_clock::now();
@@ -56,8 +61,8 @@ void dist_sddmm_spcomm(
              */
             MPI_Barrier(MPI_COMM_WORLD);
             
-            print_comm_stats_sparse(C.mtxName, comm_pre, A.n, pt,0,0,0, MPI_COMM_WORLD);
-            print_comm_stats_sparse(C.mtxName, comm_post, A.n, pt,0,0,0, MPI_COMM_WORLD);
+            print_comm_stats_sparse(C.mtxName, comm_pre, A.n, pt,X,Y,Z, MPI_COMM_WORLD);
+            print_comm_stats_sparse(C.mtxName, comm_post, A.n, pt,X,Y,Z, MPI_COMM_WORLD);
 
 
 }
@@ -67,7 +72,12 @@ void dist_sddmm_spcomm(
             coo_mtx& S,
             DenseComm& comm_pre,
             DenseComm& comm_post,
-            coo_mtx& C){
+            coo_mtx& C,
+            MPI_Comm comm){
+            int X,Y,Z;
+            std::array<int, 3> dims, t1, t2;
+            MPI_Cart_get(comm, 3, dims.data(), t1.data(), t2.data());
+            X = dims[0]; Y=dims[1]; Z=dims[2];
             parallelTiming pt; 
             /* comm_pre */
             auto start = chrono::high_resolution_clock::now();
@@ -113,9 +123,9 @@ void dist_sddmm_spcomm(
              *             Cloc.printOwnedMatrix(10);
              *         }
              */
-            MPI_Barrier(MPI_COMM_WORLD);
-            print_comm_stats_dense(C.mtxName, comm_pre, A.n,pt, 0,0,0, MPI_COMM_WORLD); 
-            print_comm_stats_dense(C.mtxName, comm_post, A.n, pt, 0,0,0, MPI_COMM_WORLD); 
+            MPI_Barrier(comm);
+            print_comm_stats_dense(C.mtxName, comm_pre, A.n,pt, X,Y,Z, comm); 
+            print_comm_stats_dense(C.mtxName, comm_post, A.n, pt, X,Y,Z, comm); 
 
     }
 }

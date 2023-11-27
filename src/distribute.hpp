@@ -108,9 +108,6 @@ namespace SpKernels {
 
     void create_AB_Bcast(coo_mtx& Cloc, idx_t floc, 
             std::vector<int>& rpvec, std::vector<int>& cpvec,
-            MPI_Comm xycomm, denseMatrix& Aloc, denseMatrix& Bloc,
-            std::vector<idx_t>& gtlR, std::vector<idx_t>& gtlC,
-            std::vector<idx_t>& ltgR, std::vector<idx_t>& ltgC
-            );
+            MPI_Comm xycomm, denseMatrix& Aloc, denseMatrix& Bloc);
 }
 #endif

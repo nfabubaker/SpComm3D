@@ -171,18 +171,17 @@ int main(int argc, char *argv[])
         Bloc.data.resize(Bloc.m * Bloc.n, myxyrank+1);
         setup_3dsddmm(Cloc, f, c, xycomm, zcomm, Aloc, Bloc, rpvec, cpvec, comm_expand, comm_reduce); 
 
-        dist_sddmm_spcomm(Aloc, Bloc, Sloc, comm_expand, comm_reduce, Cloc);
-        print_numerical_sum(Cloc, zcomm, cartcomm);
+        dist_sddmm_spcomm(Aloc, Bloc, Sloc, comm_expand, comm_reduce, Cloc, cartcomm);
+ //       print_numerical_sum(Cloc, zcomm, cartcomm);
     }
     /* instance #2: dense */
     {
         for(auto& elm : Cloc.elms) elm.val = 0.0;
         DenseComm comm_pre, comm_post;
         denseMatrix Aloc, Bloc;
-        std::vector<idx_t> gtlR(Cloc.grows, -1), gtlC(Cloc.gcols, -1), ltgR, ltgC;
+        std::unordered_map<idx_t, idx_t> gtlR, gtlC;
         std::vector<idx_t> mapA(Cloc.lrows), mapB(Cloc.lcols);
-        create_AB_Bcast(Cloc, floc, rpvec, cpvec, xycomm, Aloc, Bloc,
-                gtlR, gtlC, ltgR, ltgC);
+        create_AB_Bcast(Cloc, floc, rpvec, cpvec, xycomm, Aloc, Bloc);
         std::vector<idx_t> mapAI(Aloc.m), mapBI(Bloc.m);
         setup_3dsddmm_bcast(Cloc,f,c, Aloc, Bloc, rpvec, cpvec,
                 xycomm, zcomm,  comm_pre, comm_post, mapA, mapB);
@@ -203,7 +202,7 @@ int main(int argc, char *argv[])
             elS.row = el.row;
             elS.col = el.col;
         }
-        dist_sddmm_dcomm(Aloc, Bloc, Sloc, comm_pre, comm_post, Cloc);
+        dist_sddmm_dcomm(Aloc, Bloc, Sloc, comm_pre, comm_post, Cloc, cartcomm);
         // re-map local rows/cols in Cloc ///
         for(size_t i = 0; i < Cloc.lnnz; ++i){
             idx_t lrid, lcid;
@@ -217,7 +216,7 @@ int main(int argc, char *argv[])
             elS.col = el.col;
         }
 
-    print_numerical_sum(Cloc, zcomm, cartcomm);
+//    print_numerical_sum(Cloc, zcomm, cartcomm);
     }
 
     MPI_Finalize();

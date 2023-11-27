@@ -130,16 +130,15 @@ namespace SpKernels {
         MPI_Bcast(Cloc.owners.data(), Cloc.lnnz, MPI_INT, 0, *zcomm);
         for(size_t i = 0; i < Cloc.lnnz; ++i){ if(Cloc.owners[i] == zrank) Cloc.ownedNnz++;}
         Cloc.ltgR.clear(); Cloc.ltgC.clear(); 
-        Cloc.gtlR.resize(Cloc.grows, -1); Cloc.gtlC.resize(Cloc.gcols, -1);
         Cloc.lrows = 0; Cloc.lcols = 0;
         for(size_t i = 0; i < Cloc.lnnz; ++i){
             idx_t rid = Cloc.elms.at(i).row;
             idx_t cid = Cloc.elms.at(i).col;
-            if( Cloc.gtlR[rid] == -1){
+            if( Cloc.gtlR.find(rid) == Cloc.gtlR.end()){
                 Cloc.gtlR[rid] = Cloc.lrows++;
                 Cloc.ltgR.push_back(rid);
             }
-            if( Cloc.gtlC[cid] == -1){
+            if(Cloc.gtlC.find(cid) == Cloc.gtlC.end()){
                 Cloc.gtlC[cid] = Cloc.lcols++;
                 Cloc.ltgC.push_back(cid);
             }
@@ -438,10 +437,7 @@ namespace SpKernels {
 
     void create_AB_Bcast(coo_mtx& Cloc, idx_t floc, 
             std::vector<int>& rpvec, std::vector<int>& cpvec,
-            MPI_Comm xycomm, denseMatrix& Aloc, denseMatrix& Bloc,
-            std::vector<idx_t>& gtlR, std::vector<idx_t>& gtlC,
-            std::vector<idx_t>& ltgR, std::vector<idx_t>& ltgC
-            )
+            MPI_Comm xycomm, denseMatrix& Aloc, denseMatrix& Bloc)
     {
         int myxyrank;
         std::array<int,3> tdims ={0,0,0};
@@ -453,15 +449,13 @@ namespace SpKernels {
         for(size_t i=0; i < Cloc.grows; ++i){
             MPI_Cart_coords(xycomm, rpvec[i], 2, tdims.data());
             if(tdims[0] == myxcoord){ 
-                ltgR.push_back(i);
-                gtlR.at(i) = Aloc.m++;
+                Aloc.m++;
             }
         }
         for(size_t i=0; i < Cloc.gcols; ++i){ 
             MPI_Cart_coords(xycomm, cpvec[i], 2, tdims.data());
             if(tdims[1] == myycoord){ 
-                ltgC.push_back(i);
-                gtlC.at(i) = Bloc.m++; 
+                Bloc.m++; 
             }
         }
         Aloc.n = floc;
