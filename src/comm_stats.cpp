@@ -80,18 +80,7 @@ void print_comm_stats_dense(std::string mtxName, DenseComm& DComm, idx_t f,
 
     idx_t mySendVol, myRecvVol, mySendMsg, myRecvMsg;
   
-    if(DComm.OP == 0){
-        int myrankinXcomm, myrankinYcomm;
-        MPI_Comm_rank(DComm.commX, &myrankinXcomm);
-        MPI_Comm_rank(DComm.commY, &myrankinYcomm);
-        idx_t allvol = std::accumulate(DComm.bcastXcnt.begin(), DComm.bcastXcnt.end(), 0.0) +
-        std::accumulate(DComm.bcastYcnt.begin(), DComm.bcastYcnt.end(), 0.0); 
-        mySendVol = DComm.bcastXcnt[myrankinXcomm] + DComm.bcastYcnt[myrankinYcomm]; 
-        myRecvVol = allvol - mySendVol; 
-        myRecvMsg = DComm.outDegreeX + DComm.outDegreeY; 
-        mySendMsg = 1; 
-    }
-    else if(DComm.OP == 1){
+    if(DComm.OP == 1 && DComm.commXflag && DComm.commYflag){
         int myrankinZcomm;
         MPI_Comm_rank(DComm.commX, &myrankinZcomm);
         mySendVol = DComm.lnnz; 
@@ -99,6 +88,20 @@ void print_comm_stats_dense(std::string mtxName, DenseComm& DComm, idx_t f,
         myRecvMsg = 1; 
         mySendMsg = 1;
 
+    }
+    else{
+        int myrankinXcomm, myrankinYcomm;
+        if (DComm.commXflag) MPI_Comm_rank(DComm.commX, &myrankinXcomm);
+        if (DComm.commYflag) MPI_Comm_rank(DComm.commY, &myrankinYcomm);
+        idx_t allvol = 0;
+        if(DComm.commXflag) allvol += std::accumulate(DComm.bcastXcnt.begin(), DComm.bcastXcnt.end(), 0.0);
+        if(DComm.commYflag) allvol +=std::accumulate(DComm.bcastYcnt.begin(), DComm.bcastYcnt.end(), 0.0); 
+        mySendVol = (DComm.commXflag? DComm.bcastXcnt[myrankinXcomm]:0) + (DComm.commYflag?DComm.bcastYcnt[myrankinYcomm]:0); 
+        myRecvVol = allvol - mySendVol; 
+        myRecvMsg = 0;
+        myRecvMsg += (DComm.commXflag?DComm.outDegreeX:0);
+        myRecvMsg += (DComm.commYflag ? DComm.outDegreeY: 0); 
+        mySendMsg = 1; 
     }
     int myrank; 
     MPI_Comm_rank(comm, &myrank);

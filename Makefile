@@ -5,8 +5,12 @@ sddmmbin:
 sddmm: 
 	mpic++ --std=c++17 -O3 -o sddmm miniapp/main.cpp src/*.cpp -I./src
 	#g++ -O3 -o sddmm miniapp/main.cpp src/*.cpp -I/usr/include/x86_64-linux-gnu/mpich -L/usr/lib/x86_64-linux-gnu -lmpi
-debug: 
+spmm:
+	mpic++ --std=c++17 -O3 -o spmm miniapp/main_spmm.cpp src/*.cpp -I./src
+debugSDDMM: 
 	mpic++ --std=c++17 -ggdb -o sddmmbin miniapp/main.cpp src/*.cpp -I./src
+debugSPMM: 
+	mpic++ --std=c++17 -ggdb -o spmm miniapp/main_spmm.cpp src/*.cpp -I./src
 	#g++ -O3 -o sddmm miniapp/main.cpp src/*.cpp -I/usr/include/x86_64-linux-gnu/mpich -L/usr/lib/x86_64-linux-gnu -lmpi
 testBin: 
 	mpic++ --std=c++17 -ggdb -o testbin miniapp/test_binary_mm.cpp src/*.cpp -I./src

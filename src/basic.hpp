@@ -35,7 +35,7 @@ typedef struct _parallelTiming{
         std::vector<real_t> data;
         std::vector<idx_t> ltg;
         std::vector<idx_t> gtl;
-        inline real_t at(idx_t x, idx_t y){return data.at(x*n + y);}
+        inline real_t& at(idx_t x, idx_t y){return data.at(x*n + y);}
         void printMatrix(idx_t count =0 ){
             idx_t nrows = m;
             if(count != 0) nrows = count / n;
