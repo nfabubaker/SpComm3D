@@ -202,7 +202,7 @@ int main(int argc, char *argv[])
             el.col = mapXI[lcid];
         }
 
-//    print_numerical_sum(Cloc, zcomm, cartcomm);
+    //print_numerical_sum(Aloc, zcomm, cartcomm);
     }
 
 
