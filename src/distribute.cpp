@@ -353,7 +353,6 @@ namespace SpKernels {
             std::vector<int>& rpvec,
             std::vector<int>& cpvec,
             coo_mtx& Cloc,
-            const idx_t f,
             MPI_Comm cartXYcomm)
     {
         idx_t M = Cloc.grows, N = Cloc.gcols;

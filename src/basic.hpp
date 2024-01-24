@@ -20,7 +20,7 @@
 namespace SpKernels {
 
 typedef struct _parallelTiming{
-    idx_t comm1Time, comm2Time, compTime;
+    idx_t comm1Time, comm2Time, compTime, totalTime;
 } parallelTiming;
 
     typedef struct _triplet{
