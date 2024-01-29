@@ -1,14 +1,16 @@
-#include "../src/basic.hpp"
-#include "../src/mm.hpp"
+#include "basic.hpp"
+#include "mm.hpp"
 #include <bits/getopt_core.h>
 #include <cstdlib>
 #include <fstream>
 #include <getopt.h>
 #include <algorithm>
 #include <ios>
+#include <pthread.h>
 #include <string>
+#include "SparseMatrix.hpp"
 
-
+using namespace SpKernels;
 
 void parse_arguments(int argc, char* argv[], int& X, int& Y, int&Z, string& inFN, string& outFN){
     int choice;
@@ -76,31 +78,37 @@ void parse_arguments(int argc, char* argv[], int& X, int& Y, int&Z, string& inFN
     
 }
 
-void convert_to_binary(SpKernels::coo_mtx& C, string outputFN){
+void convert_to_binary(SpKernels::cooMat& C, string outputFN){
     ofstream ofile(outputFN, ios_base::out);
-    ofile.write((char *) &C.grows, sizeof(idx_t)); 
-    ofile.write((char *) &C.gcols, sizeof(idx_t)); 
-    ofile.write((char *) &C.gnnz, sizeof(idx_t)); 
-    for(SpKernels::triplet& m : C.elms){
-       ofile.write((char *) &m, sizeof(SpKernels::triplet));
+    ofile.write((char *) &C.gnrows, sizeof(idx_t)); 
+    ofile.write((char *) &C.gncols, sizeof(idx_t)); 
+    ofile.write((char *) &C.gnnz, sizeof(idx_large_t)); 
+    for(idx_large_t i = 0; i < C.gnnz; ++i){
+       ofile.write((char *) &C.ii[i], sizeof(idx_t));
+       ofile.write((char *) &C.jj[i], sizeof(idx_t));
+       ofile.write((char *) &C.vv[i], sizeof(real_t));
     }
     
     ofile.close();
 
 }
 
-void test_binary_serial(string inFN, SpKernels::coo_mtx& C){
+void test_binary_serial(string inFN, SpKernels::cooMat& C){
     ifstream infile(inFN, ios::out | ios::binary);
     if(!infile){
         cout << "cannot open file!" << endl;
         exit(EXIT_FAILURE);
     }
-    infile.read((char *) &C.grows, sizeof(idx_t));
-    infile.read((char *) &C.gcols, sizeof(idx_t));
-    infile.read((char *) &C.gnnz, sizeof(idx_t));
-    C.elms.resize(C.gnnz);
-    for(size_t i = 0; i < C.gnnz; ++i){
-        infile.read((char *) &C.elms[i], sizeof(SpKernels::triplet));
+    infile.read((char *) &C.gnrows, sizeof(idx_t));
+    infile.read((char *) &C.gncols, sizeof(idx_t));
+    infile.read((char *) &C.gnnz, sizeof(idx_large_t));
+    C.ii.resize(C.gnnz);
+    C.jj.resize(C.gnnz);
+    C.vv.resize(C.gnnz);
+    for(idx_large_t i = 0; i < C.gnnz; ++i){
+        infile.read((char *) &C.ii[i], sizeof(idx_t));
+        infile.read((char *) &C.jj[i], sizeof(idx_t));
+        infile.read((char *) &C.vv[i], sizeof(real_t));
     }
     infile.close();
 
@@ -119,19 +127,19 @@ int main(int argc, char *argv[])
 
     {
         SpKernels::mm _mm(inFN);
-        SpKernels::coo_mtx C;
-        C = _mm.read_mm(inFN);
+        SpKernels::cooMat C;
+        _mm.read_mm(inFN, C);
         convert_to_binary(C, outFN);
     }
 /*     {
  * 
- *         SpKernels::coo_mtx C;
+ *         SpKernels::cooMat C;
  *         test_binary_serial(outFN, C);
- *         cout << C.grows << C.gcols << C.gnnz << endl;
- *         C.printMatrix(C.gnnz);
- * 
+ *         cout << C.gnrows << C.gncols << C.gnnz << endl;
+ *         C.printMatrix(20);
  *     }
  */
+
     
     return 0;
 }
