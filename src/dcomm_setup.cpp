@@ -217,12 +217,12 @@ void DComm::setup_3dsddmm_bcast(
     comm_post.bcastXcnt.resize(zsize,0);
     comm_post.bcastXdisp.resize(zsize,0);
     idx_t nnz_pp = Cloc.nnz / zsize;
-    idx_t nnz_pp_r = Cloc.nnz / zsize;
+    idx_t nnz_pp_r = Cloc.nnz % zsize;
     for(int i =0; i < zsize; ++i)
         comm_post.bcastXcnt[i] = nnz_pp + (i< nnz_pp_r ? 1:0);
     for(int i =1; i < zsize; ++i)
         comm_post.bcastXdisp[i] = comm_post.bcastXdisp[i-1] + comm_post.bcastXcnt[i-1];
-    
+    assert(Cloc.ownedVals.size() == comm_post.bcastXcnt[myzrank]); 
     
     /* re-localize C nonzeros */
 /*     for(size_t i = 0; i < Cloc.lnnz; ++i){

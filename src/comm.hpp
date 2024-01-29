@@ -68,7 +68,6 @@ namespace SpKernels {
             }
         }
         void perform_sparse_comm(bool sendcopyflag = true, bool recvcopyflag=true){
-            if(sendcopyflag) copy_to_sendbuff();
             /* TODO implement more efficient Irecv .. etc */
             if(commT == P2P){ 
                 if(commP == MPI_COMM_NULL) goto ERR_EXIT;
@@ -78,6 +77,7 @@ namespace SpKernels {
                     MPI_Irecv(recvBuff.data() + recvDisp[i],
                             recvCount[i], mpi_get_type(), inSet[i] ,
                             77, commP, &rqsts[i]);
+                if(sendcopyflag) copy_to_sendbuff();
                 for(i =0; i < outDegree; ++i) 
                     MPI_Send(sendBuff.data() + sendDisp[i],
                             sendCount[i], mpi_get_type(), outSet[i] ,
