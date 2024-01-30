@@ -4,6 +4,7 @@
 #include <vector>
 #include "basic.hpp"
 #include "SparseMatrix.hpp"
+#include "comm.hpp"
 #include "comm_stats.hpp"
 #include <getopt.h>
 #include <chrono>
@@ -177,7 +178,6 @@ int main(int argc, char *argv[])
         setup_3dsddmm(Cloc, f, c, xycomm, zcomm, Aloc, Bloc, rpvec, cpvec, comm_expand, comm_reduce); 
 
         dist_sddmm_spcomm(Aloc, Bloc, Sloc, comm_expand, comm_reduce, Cloc, cartcomm);
-               print_numerical_sum(Cloc, zcomm, cartcomm);
     }
     /* instance #2: dense */
     {
@@ -206,8 +206,14 @@ int main(int argc, char *argv[])
         }
 
             print_numerical_sum(Cloc, zcomm, cartcomm);
+        
+        MPI_Comm_free(&comm_pre.commX);
+        MPI_Comm_free(&comm_pre.commY);
     }
 
+    MPI_Comm_free(&xycomm);
+    MPI_Comm_free(&zcomm);
+    MPI_Comm_free(&cartcomm);
     MPI_Finalize();
     return 0;
 }

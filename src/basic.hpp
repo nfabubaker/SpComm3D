@@ -18,7 +18,7 @@ namespace SpKernels {
 #define idx_large_t uint64_t
 
 typedef struct _parallelTiming{
-    idx_t comm1Time, comm2Time, compTime, totalTime;
+    idx_t comm1Time, comm2Time, commcpyTime, compTime, totalTime;
 } parallelTiming;
 
     typedef struct _triplet{
