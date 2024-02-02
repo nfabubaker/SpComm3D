@@ -124,6 +124,97 @@ void dist_sddmm_spcomm(
 
 
 }
+void dist_sddmm_spcomm3(
+            denseMatrix& A,
+            denseMatrix& B,
+            cooMat& S,
+            SparseComm<real_t>& comm_preA,
+            SparseComm<real_t>& comm_preB,
+            DComm::DenseComm& comm_post,
+            cooMat& C,
+            MPI_Comm comm){
+            int X,Y,Z;
+            std::array<int, 3> dims, t1, t2;
+            MPI_Cart_get(comm, 3, dims.data(), t1.data(), t2.data());
+            X = dims[0]; Y=dims[1]; Z=dims[2];
+
+            parallelTiming pt = {0}; 
+            auto totStart = chrono::high_resolution_clock::now();
+            auto start = chrono::high_resolution_clock::now();
+            comm_preA.issue_Irecvs();
+            comm_preB.issue_Irecvs();
+            comm_preA.issue_Sends(true);
+            comm_preB.issue_Sends(true);
+            comm_preA.issue_Waitall();
+            comm_preB.issue_Waitall();
+            auto stop = chrono::high_resolution_clock::now();
+            pt.comm1Time = chrono::duration_cast<chrono::milliseconds>(stop-start).count(); 
+            start = chrono::high_resolution_clock::now();
+            sddmm(A,B,S,C);
+            stop = chrono::high_resolution_clock::now();
+            pt.compTime = chrono::duration_cast<chrono::milliseconds>(stop-start).count();
+            start = chrono::high_resolution_clock::now();
+           
+            comm_post.perform_dense_comm();
+            stop = chrono::high_resolution_clock::now();
+            pt.comm2Time = chrono::duration_cast<chrono::milliseconds>(stop-start).count();
+            auto totStop = chrono::high_resolution_clock::now(); 
+            pt.totalTime = chrono::duration_cast<chrono::milliseconds>(totStop-totStart).count();
+            MPI_Barrier(MPI_COMM_WORLD);
+            
+            print_comm_stats_sparse2(C.mtxName, "sparse sddmm PRE", comm_preA, comm_preB, A.n, pt,X,Y,Z, MPI_COMM_WORLD);
+            print_comm_stats_dense(C.mtxName, "sparse sddmm POST",comm_post, A.n, pt,X,Y,Z, MPI_COMM_WORLD);
+
+
+}
+void dist_sddmm_spcomm2(
+            denseMatrix& A,
+            denseMatrix& B,
+            cooMat& S,
+            SparseComm<real_t>& comm_preA,
+            SparseComm<real_t>& comm_preB,
+            DComm::DenseComm& comm_post,
+            cooMat& C,
+            MPI_Comm comm){
+            int X,Y,Z;
+            std::array<int, 3> dims, t1, t2;
+            MPI_Cart_get(comm, 3, dims.data(), t1.data(), t2.data());
+            X = dims[0]; Y=dims[1]; Z=dims[2];
+
+            parallelTiming pt = {0}; 
+            auto totStart = chrono::high_resolution_clock::now();
+            auto start = chrono::high_resolution_clock::now();
+            comm_preA.issue_Irecvs();
+            comm_preB.issue_Irecvs();
+            auto start2 = chrono::high_resolution_clock::now();
+            comm_preA.copy_to_sendbuff();
+            comm_preB.copy_to_sendbuff();
+            auto stop2 = chrono::high_resolution_clock::now();
+            pt.commcpyTime = chrono::duration_cast<chrono::milliseconds>(stop2-start2).count();
+            comm_preA.issue_Sends();
+            comm_preB.issue_Sends();
+            comm_preA.issue_Waitall();
+            comm_preB.issue_Waitall();
+            auto stop = chrono::high_resolution_clock::now();
+            pt.comm1Time = chrono::duration_cast<chrono::milliseconds>(stop-start).count(); 
+            start = chrono::high_resolution_clock::now();
+            sddmm(A,B,S,C);
+            stop = chrono::high_resolution_clock::now();
+            pt.compTime = chrono::duration_cast<chrono::milliseconds>(stop-start).count();
+            start = chrono::high_resolution_clock::now();
+           
+            comm_post.perform_dense_comm();
+            stop = chrono::high_resolution_clock::now();
+            pt.comm2Time = chrono::duration_cast<chrono::milliseconds>(stop-start).count();
+            auto totStop = chrono::high_resolution_clock::now(); 
+            pt.totalTime = chrono::duration_cast<chrono::milliseconds>(totStop-totStart).count();
+            MPI_Barrier(MPI_COMM_WORLD);
+            
+            print_comm_stats_sparse2(C.mtxName, "sparse sddmm PRE", comm_preA, comm_preB, A.n, pt,X,Y,Z, MPI_COMM_WORLD);
+            print_comm_stats_dense(C.mtxName, "sparse sddmm POST",comm_post, A.n, pt,X,Y,Z, MPI_COMM_WORLD);
+
+
+}
     void dist_spmm_dcomm(
             denseMatrix& X,
             denseMatrix& Y,

@@ -73,7 +73,7 @@ namespace SpKernels {
            }
        }
        sc.init(1, nsendto, nrecvfrom, totalSendCnt, totalRecvCnt,
-               SparseComm<idx_t>::P2P, world_comm, MPI_COMM_NULL);
+               SparseComm<idx_t>::P2P, world_comm, MPI_COMM_NULL, true, true);
        
        idx_t idx1 = 0, idx2=0;
         for(int i = 0; i < worldsize; ++i){

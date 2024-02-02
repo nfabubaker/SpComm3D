@@ -151,7 +151,6 @@ int main(int argc, char *argv[])
         Sloc.localizeIndices();
         /* copy C to S and reset values in S */
         Cloc = Sloc;
-        for(auto& elm : Cloc.vv) elm = 0.0;
 
 
         Cloc.rank = rank;
@@ -164,7 +163,7 @@ int main(int argc, char *argv[])
                 Cloc, f, xycomm, zcomm, cartcomm);
     }
     { /* distribute A,B and respect communication, setup sparse comm*/
-
+        for(auto& elm : Cloc.vv) elm = 0.0;
         SparseComm<real_t> comm_expand;
         DenseComm comm_reduce;
         denseMatrix Aloc, Bloc;
@@ -178,10 +177,68 @@ int main(int argc, char *argv[])
         setup_3dsddmm(Cloc, f, c, xycomm, zcomm, Aloc, Bloc, rpvec, cpvec, comm_expand, comm_reduce); 
 
         dist_sddmm_spcomm(Aloc, Bloc, Sloc, comm_expand, comm_reduce, Cloc, cartcomm);
+        print_numerical_sum(Cloc, zcomm, cartcomm);
+    }
+    { /* sparse sddmm instance#2: no recv buffer*/  
+        for(auto& elm : Cloc.vv) elm = 0.0;
+        std::fill(Cloc.ownedVals.begin(), Cloc.ownedVals.end(), 0.0);
+        SparseComm<real_t> comm_expandA;
+        SparseComm<real_t> comm_expandB;
+        DenseComm comm_reduce;
+        denseMatrix Aloc, Bloc;
+        /* prepare Aloc, Bloc according to local dims of Cloc */
+        // split the 3D mesh communicator to 2D slices 
+
+        Aloc.m = Cloc.nrows; Aloc.n = floc;
+        Bloc.m = Cloc.ncols; Bloc.n = floc;
+        Aloc.data.resize(Aloc.m * Aloc.n, myxyrank+1);
+        Bloc.data.resize(Bloc.m * Bloc.n, myxyrank+1);
+        std::vector<idx_t> mapA(Aloc.m, -1), mapB(Bloc.m, -1), mapAI(Aloc.m), mapBI(Bloc.m);
+        setup_3dsddmm_NoRecvBuffer(Cloc, f, c, xycomm, zcomm, Aloc, Bloc, rpvec, cpvec, comm_expandA, comm_expandB, comm_reduce, mapA, mapB); 
+        for(auto &elm : mapA) if(elm == (idx_t) -1) cout <<"ERROR mapA!" <<endl;
+        for(auto &elm : mapB) if(elm == (idx_t) -1) cout <<"ERROR mapB!" <<endl;
+        for(idx_t i = 0; i < Aloc.m; ++i) mapAI[mapA[i]] = i;
+        for(idx_t i = 0; i < Bloc.m; ++i) mapBI[mapB[i]] = i;
+
+        Sloc.ReMapIndices(mapA, mapB);
+        Cloc.ReMapIndices(mapA, mapB);
+        dist_sddmm_spcomm2(Aloc, Bloc, Sloc, comm_expandA, comm_expandB, comm_reduce, Cloc, cartcomm);
+        Sloc.ReMapIndices(mapAI, mapBI);
+        Cloc.ReMapIndices(mapAI, mapBI);
+        print_numerical_sum(Cloc, zcomm, cartcomm);
+    }
+    { /* sparse sddmm instance#3: no buffers*/  
+        for(auto& elm : Cloc.vv) elm = 0.0;
+        std::fill(Cloc.ownedVals.begin(), Cloc.ownedVals.end(), 0.0);
+        SparseComm<real_t> comm_expandA;
+        SparseComm<real_t> comm_expandB;
+        DenseComm comm_reduce;
+        denseMatrix Aloc, Bloc;
+        /* prepare Aloc, Bloc according to local dims of Cloc */
+        // split the 3D mesh communicator to 2D slices 
+
+        Aloc.m = Cloc.nrows; Aloc.n = floc;
+        Bloc.m = Cloc.ncols; Bloc.n = floc;
+        Aloc.data.resize(Aloc.m * Aloc.n, myxyrank+1);
+        Bloc.data.resize(Bloc.m * Bloc.n, myxyrank+1);
+        std::vector<idx_t> mapA(Aloc.m, -1), mapB(Bloc.m, -1), mapAI(Aloc.m), mapBI(Bloc.m);
+        setup_3dsddmm_NoBuffers(Cloc, f, c, xycomm, zcomm, Aloc, Bloc, rpvec, cpvec, comm_expandA, comm_expandB, comm_reduce, mapA, mapB); 
+        for(auto &elm : mapA) if(elm == (idx_t) -1) cout <<"ERROR mapA!" <<endl;
+        for(auto &elm : mapB) if(elm == (idx_t) -1) cout <<"ERROR mapB!" <<endl;
+        for(idx_t i = 0; i < Aloc.m; ++i) mapAI[mapA[i]] = i;
+        for(idx_t i = 0; i < Bloc.m; ++i) mapBI[mapB[i]] = i;
+
+        Sloc.ReMapIndices(mapA, mapB);
+        Cloc.ReMapIndices(mapA, mapB);
+        dist_sddmm_spcomm3(Aloc, Bloc, Sloc, comm_expandA, comm_expandB, comm_reduce, Cloc, cartcomm);
+        Sloc.ReMapIndices(mapAI, mapBI);
+        Cloc.ReMapIndices(mapAI, mapBI);
+        print_numerical_sum(Cloc, zcomm, cartcomm);
     }
     /* instance #2: dense */
     {
         for(auto& elm : Cloc.vv) elm = 0.0;
+        std::fill(Cloc.ownedVals.begin(), Cloc.ownedVals.end(), 0.0);
         fill(Cloc.vv.begin(), Cloc.vv.end(), 0);
         DenseComm comm_pre, comm_post;
         denseMatrix Aloc, Bloc;

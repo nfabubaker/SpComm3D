@@ -17,12 +17,12 @@ using namespace DComm;
 using namespace std;
 
 
-void setup_spmm_side(denseMatrix& Dloc, cooMat& Sloc, int side, idx_t dimSize, unordered_map<idx_t, idx_t>& gtlD, vector<idx_t>& ltgD, vector<int>& pvec, SparseComm<real_t>& comm_handle,  MPI_Comm comm){
-
+void setup_spmm_side(denseMatrix& Dloc, cooMat& Sloc, int side, idx_t dimSize, unordered_map<idx_t, idx_t>& gtlD, vector<idx_t>& ltgD, vector<int>& pvec, SparseComm<real_t>& comm_handle,   MPI_Comm comm){
     int myrank, size;
     MPI_Comm_rank(comm, &myrank);
     MPI_Comm_size(comm, &size);
     /* step1: decide my rows and my cols (global) */
+    idx_t mylocalrows = 0, mysharedrows = 0; 
     vector<bool> myCols(dimSize, false);
     vector<idx_t> recvCount(size, 0);
     vector<idx_t> sendCount(size, 0);
@@ -53,6 +53,7 @@ void setup_spmm_side(denseMatrix& Dloc, cooMat& Sloc, int side, idx_t dimSize, u
         if(recvCount.at(i) > 0 && i != myrank) esc.outDegree++;
     }
     esc.sendBuff.resize(totRecvCnt); esc.recvBuff.resize(totSendCnt);
+    esc.sendBuffPtr = esc.sendBuff.data(); esc.recvBuffPtr = esc.recvBuff.data();
     esc.inSet.resize(esc.inDegree); esc.outSet.resize(esc.outDegree);
     esc.recvCount.resize(esc.inDegree, 0); esc.sendCount.resize(esc.outDegree,0);
     esc.recvDisp.resize(esc.inDegree+2, 0); esc.sendDisp.resize(esc.outDegree+2,0);
@@ -79,6 +80,9 @@ void setup_spmm_side(denseMatrix& Dloc, cooMat& Sloc, int side, idx_t dimSize, u
     for (int i = 0; i < esc.outDegree; ++i) { esc.sendDisp.at(i+2) = esc.sendDisp.at(i+1) + esc.sendCount.at(i);}
     for (int i = 0; i < esc.inDegree; ++i) { esc.recvDisp.at(i+1) = esc.recvDisp.at(i) + esc.recvCount.at(i);}
 
+    /* compute mapping of Dloc[ sends/local; Recvs] */
+    idx_t msendsDisp =0;
+
     /* Tell processors what rows/cols you want from them */
     /* 1 - determine what to send */
     for ( size_t i = 0; i < dimSize; ++i) {
@@ -91,7 +95,7 @@ void setup_spmm_side(denseMatrix& Dloc, cooMat& Sloc, int side, idx_t dimSize, u
 
     /* now recv from each processor available in recvBuff */
     idx_t f = Dloc.n;
-    comm_handle.init(f, esc.outDegree, esc.inDegree, totSendCnt, totRecvCnt, SparseComm<real_t>::P2P, comm, MPI_COMM_NULL); 
+    comm_handle.init(f, esc.outDegree, esc.inDegree, totSendCnt, totRecvCnt, SparseComm<real_t>::P2P, comm, MPI_COMM_NULL, true, true); 
     comm_handle.inSet = esc.outSet;
     comm_handle.outSet = esc.inSet;
     for(int i=0; i < esc.inDegree; ++i) {
@@ -127,11 +131,299 @@ void setup_spmm_side(denseMatrix& Dloc, cooMat& Sloc, int side, idx_t dimSize, u
             comm_handle.recvptr.at(d+j) = &Dloc.data.at(gtlD.at(idx) * f);
         }
     }
-    /* exchange row/col ids */
-/*     for (int i = 0; i < esc.inDegree; ++i) {
- * 
- *     }
- */
+
+    return;
+
+ERR_EXIT:
+    MPI_Finalize();
+    exit(EXIT_FAILURE);
+}
+
+void setup_side_noBuffs(denseMatrix& Dloc, cooMat& Sloc, int side, idx_t dimSize, unordered_map<idx_t, idx_t>& gtlD, vector<idx_t>& ltgD, vector<int>& pvec, SparseComm<real_t>& comm_handle, vector<idx_t>& mapSide, bool packedDT, MPI_Comm comm){
+    int myrank, size;
+    MPI_Comm_rank(comm, &myrank);
+    MPI_Comm_size(comm, &size);
+    /* step1: decide my rows and my cols (global) */
+    idx_t myownedrows = 0, mynonownedrows; 
+    vector<bool> myCols(dimSize, false);
+    vector<idx_t> recvCount(size, 0);
+    vector<idx_t> sendCount(size, 0);
+    for(idx_large_t i = 0; i < Sloc.nnz; ++i){
+        if(side == 0)
+            myCols.at(ltgD.at(Sloc.ii[i])) = true;
+        else
+            myCols.at(ltgD.at(Sloc.jj[i])) = true;
+    }
+
+    /* step2: decide which rows/cols I will recv from which processor */
+    for (size_t i = 0; i < dimSize; ++i) if(myCols.at(i)) recvCount.at(pvec.at(i))++; 
+
+    /* exchange recv info, now each processor knows send count for each other processor */
+    MPI_Alltoall(recvCount.data(), 1, MPI_IDX_T, sendCount.data(), 1, MPI_IDX_T, comm);
+    idx_t totSendCnt = 0, totRecvCnt = 0;
+    totSendCnt = accumulate(sendCount.begin(), sendCount.end(), totSendCnt);
+    totSendCnt -= sendCount[myrank];
+    totRecvCnt = accumulate(recvCount.begin(), recvCount.end(), totRecvCnt);
+    totRecvCnt -= recvCount[myrank];
+
+    mynonownedrows = totRecvCnt;
+    myownedrows = recvCount[myrank];
+    assert(mynonownedrows+myownedrows == Dloc.m);
+    mapSide.resize(Dloc.m);
+
+    /* exchange row/col IDs */
+    SparseComm<idx_t> esc(1); /* esc: short for expand setup comm */
+    esc.commT = SparseComm<idx_t>::P2P;
+    esc.commP = comm;
+    for(int i = 0; i < size; ++i){ 
+        if(sendCount.at(i) > 0 && i != myrank) esc.inDegree++;
+        if(recvCount.at(i) > 0 && i != myrank) esc.outDegree++;
+    }
+    esc.sendBuff.resize(totRecvCnt); esc.recvBuff.resize(totSendCnt);
+    esc.sendBuffPtr = esc.sendBuff.data(); esc.recvBuffPtr = esc.recvBuff.data();
+    esc.inSet.resize(esc.inDegree); esc.outSet.resize(esc.outDegree);
+    esc.recvCount.resize(esc.inDegree, 0); esc.sendCount.resize(esc.outDegree,0);
+    esc.recvDisp.resize(esc.inDegree+2, 0); esc.sendDisp.resize(esc.outDegree+2,0);
+
+    vector<int> gtlR(size,-1), gtlS(size,-1);
+    int tcnt=0;
+    for (int i = 0 ; i < size; ++i) {
+        if(sendCount.at(i) > 0 && i != myrank ){ 
+            gtlR.at(i) = tcnt; 
+            esc.inSet.at(tcnt) = i;
+            esc.recvCount.at(tcnt++) = sendCount.at(i);
+        }
+    }
+    assert(tcnt == esc.inDegree);
+    tcnt = 0;
+    for (int i = 0; i < size; ++i) {
+        if(recvCount.at(i) > 0 && i != myrank ){
+            gtlS.at(i) = tcnt; 
+            esc.outSet.at(tcnt) = i;
+            esc.sendCount.at(tcnt++) = recvCount.at(i);
+        }
+    }
+    assert(tcnt == esc.outDegree);
+    for (int i = 0; i < esc.outDegree; ++i) { esc.sendDisp.at(i+2) = esc.sendDisp.at(i+1) + esc.sendCount.at(i);}
+    for (int i = 0; i < esc.inDegree; ++i) { esc.recvDisp.at(i+1) = esc.recvDisp.at(i) + esc.recvCount.at(i);}
+
+    /* compute mapping of Dloc[ sends/local; Recvs] */
+    idx_t msendsDisp =0;
+
+    /* Tell processors what rows/cols you want from them */
+    /* 1 - determine what to send */
+    for ( size_t i = 0; i < dimSize; ++i) {
+        int ploc = (pvec[i] == -1 ? -1 : gtlR.at(pvec.at(i))); 
+        if(ploc != -1 && myCols.at(i)){ 
+            mapSide[gtlD.at(i)] = myownedrows+(esc.sendDisp.at(ploc+1));
+            esc.sendBuff.at(esc.sendDisp.at(ploc+1)++) = i;
+        }
+        else if(pvec[i] != -1 && gtlR.at(pvec.at(i)) == -1 && myCols.at(i)) mapSide[gtlD.at(i)] = msendsDisp++;
+    }
+    assert(msendsDisp == myownedrows);
+    esc.perform_sparse_comm(false, false);
+
+    /* now recv from each processor available in recvBuff */
+    idx_t f = Dloc.n;
+    comm_handle.init(f, esc.outDegree, esc.inDegree, totSendCnt, totRecvCnt, SparseComm<real_t>::P2P, comm, MPI_COMM_NULL, false, false); 
+    comm_handle.inSet = esc.outSet;
+    comm_handle.outSet = esc.inSet;
+    comm_handle.recvBuffPtr = Dloc.data.data() + (myownedrows*Dloc.n); 
+    comm_handle.sendBuffPtr = Dloc.data.data();
+    comm_handle.sendDataTypes.resize(comm_handle.outDegree);
+    comm_handle.sDTdisps.resize(comm_handle.outDegree);
+    if(packedDT) comm_handle.sDTblen.resize(comm_handle.outDegree);
+
+    for(int i=0; i < esc.inDegree; ++i) {
+        comm_handle.sendCount.at(i) = (esc.recvCount.at(i))*f;
+        if(!packedDT)comm_handle.sDTdisps.at(i).resize(esc.recvCount.at(i));
+        comm_handle.sendDisp.at(i+1) = (esc.recvDisp.at(i+1))*f;
+    }
+    for(int i=0; i < esc.outDegree; ++i) {
+        comm_handle.recvCount.at(i) = (esc.sendCount.at(i))*f;
+        comm_handle.recvDisp.at(i+1) = (esc.sendDisp.at(i+1))*f;
+    }
+    if(comm_handle.commT == SparseComm<real_t>::NEIGHBOR){
+        MPI_Dist_graph_create_adjacent(comm, comm_handle.inDegree, comm_handle.inSet.data(),
+                MPI_WEIGHTS_EMPTY, comm_handle.outDegree, comm_handle.outSet.data(), MPI_WEIGHTS_EMPTY, MPI_INFO_NULL, 0, &comm_handle.commN);
+    }
+
+    /* prepare expand sendbuff based on the row/col IDs I recv 
+     * (what I send is what other processors tell me to send)*/
+
+    /* note, the following code packs consecutive rows together */
+    for ( size_t i = 0;  i < esc.inDegree; ++ i) {
+        idx_t d = esc.recvDisp.at(i);
+        idx_t ttcnt = 0;
+        idx_t idx_prev=-2, idx_cur, cur_disp;
+        for (size_t j = 0; j < esc.recvCount.at(i) ; j++) {
+            idx_t idx = esc.recvBuff.at(d+j);
+            assert(gtlD.at(idx) < (idx_t)-1); 
+            assert(mapSide[gtlD.at(idx)] <= myownedrows);
+            if(packedDT){
+                idx_cur = mapSide[gtlD.at(idx)];
+                if(idx_cur == (idx_prev+1)){
+                    ttcnt++;
+                }
+                else{
+                    cur_disp = idx_cur * f;
+                    comm_handle.sDTdisps.at(i).push_back(cur_disp);
+                    if(ttcnt > 0) comm_handle.sDTblen.at(i).push_back(ttcnt * f);
+                    ttcnt = 1;
+                }
+                idx_prev = idx_cur;
+            }
+            else
+                comm_handle.sDTdisps.at(i).at(j)= (mapSide[gtlD.at(idx)] * f);  
+        }
+        if(packedDT && ttcnt > 0) comm_handle.sDTblen.at(i).push_back(ttcnt * f);
+        if(packedDT) assert(comm_handle.sDTblen[i].size() == comm_handle.sDTdisps[i].size());
+    }
+
+    for(int i = 0; i < comm_handle.outDegree; ++i){
+        if(!packedDT)
+            MPI_Type_create_indexed_block(esc.recvCount.at(i), f, (const int *)comm_handle.sDTdisps.at(i).data(), MPI_REAL_T, &comm_handle.sendDataTypes.at(i)); 
+        else
+            MPI_Type_indexed(comm_handle.sDTdisps[i].size(),
+                    (const int*)comm_handle.sDTblen[i].data(),
+                    (const int*) comm_handle.sDTdisps[i].data(),
+                    MPI_REAL_T,
+                    &comm_handle.sendDataTypes[i]);
+        MPI_Type_commit(&comm_handle.sendDataTypes.at(i));
+    }
+    return;
+
+ERR_EXIT:
+    MPI_Finalize();
+    exit(EXIT_FAILURE);
+}
+void setup_side_noRecvBuff(denseMatrix& Dloc, cooMat& Sloc, int side, idx_t dimSize, unordered_map<idx_t, idx_t>& gtlD, vector<idx_t>& ltgD, vector<int>& pvec, SparseComm<real_t>& comm_handle, vector<idx_t>& mapSide,   MPI_Comm comm){
+    int myrank, size;
+    MPI_Comm_rank(comm, &myrank);
+    MPI_Comm_size(comm, &size);
+    /* step1: decide my rows and my cols (global) */
+    idx_t myownedrows = 0, mynonownedrows; 
+    vector<bool> myCols(dimSize, false);
+    vector<idx_t> recvCount(size, 0);
+    vector<idx_t> sendCount(size, 0);
+    for(idx_large_t i = 0; i < Sloc.nnz; ++i){
+        if(side == 0)
+            myCols.at(ltgD.at(Sloc.ii[i])) = true;
+        else
+            myCols.at(ltgD.at(Sloc.jj[i])) = true;
+    }
+
+    /* step2: decide which rows/cols I will recv from which processor */
+    for (size_t i = 0; i < dimSize; ++i) if(myCols.at(i)) recvCount.at(pvec.at(i))++; 
+
+    /* exchange recv info, now each processor knows send count for each other processor */
+    MPI_Alltoall(recvCount.data(), 1, MPI_IDX_T, sendCount.data(), 1, MPI_IDX_T, comm);
+    idx_t totSendCnt = 0, totRecvCnt = 0;
+    totSendCnt = accumulate(sendCount.begin(), sendCount.end(), totSendCnt);
+    totSendCnt -= sendCount[myrank];
+    totRecvCnt = accumulate(recvCount.begin(), recvCount.end(), totRecvCnt);
+    totRecvCnt -= recvCount[myrank];
+
+    mynonownedrows = totRecvCnt;
+    myownedrows = recvCount[myrank];
+    assert(mynonownedrows+myownedrows == Dloc.m);
+    mapSide.resize(Dloc.m);
+
+    /* exchange row/col IDs */
+    SparseComm<idx_t> esc(1); /* esc: short for expand setup comm */
+    esc.commT = SparseComm<idx_t>::P2P;
+    esc.commP = comm;
+    for(int i = 0; i < size; ++i){ 
+        if(sendCount.at(i) > 0 && i != myrank) esc.inDegree++;
+        if(recvCount.at(i) > 0 && i != myrank) esc.outDegree++;
+    }
+    esc.sendBuff.resize(totRecvCnt); esc.recvBuff.resize(totSendCnt);
+    esc.sendBuffPtr = esc.sendBuff.data(); esc.recvBuffPtr = esc.recvBuff.data();
+    esc.inSet.resize(esc.inDegree); esc.outSet.resize(esc.outDegree);
+    esc.recvCount.resize(esc.inDegree, 0); esc.sendCount.resize(esc.outDegree,0);
+    esc.recvDisp.resize(esc.inDegree+2, 0); esc.sendDisp.resize(esc.outDegree+2,0);
+
+    vector<int> gtlR(size,-1), gtlS(size,-1);
+    int tcnt=0;
+    for (int i = 0 ; i < size; ++i) {
+        if(sendCount.at(i) > 0 && i != myrank ){ 
+            gtlR.at(i) = tcnt; 
+            esc.inSet.at(tcnt) = i;
+            esc.recvCount.at(tcnt++) = sendCount.at(i);
+        }
+    }
+    assert(tcnt == esc.inDegree);
+    tcnt = 0;
+    for (int i = 0; i < size; ++i) {
+        if(recvCount.at(i) > 0 && i != myrank ){
+            gtlS.at(i) = tcnt; 
+            esc.outSet.at(tcnt) = i;
+            esc.sendCount.at(tcnt++) = recvCount.at(i);
+        }
+    }
+    assert(tcnt == esc.outDegree);
+    for (int i = 0; i < esc.outDegree; ++i) { esc.sendDisp.at(i+2) = esc.sendDisp.at(i+1) + esc.sendCount.at(i);}
+    for (int i = 0; i < esc.inDegree; ++i) { esc.recvDisp.at(i+1) = esc.recvDisp.at(i) + esc.recvCount.at(i);}
+
+    /* compute mapping of Dloc[ sends/local; Recvs] */
+    idx_t msendsDisp =0;
+
+    /* Tell processors what rows/cols you want from them */
+    /* 1 - determine what to send */
+    for ( size_t i = 0; i < dimSize; ++i) {
+        int ploc = (pvec[i] == -1 ? -1 : gtlR.at(pvec.at(i))); 
+        if(ploc != -1 && myCols.at(i)){ 
+            mapSide[gtlD.at(i)] = myownedrows+(esc.sendDisp.at(ploc+1));
+            esc.sendBuff.at(esc.sendDisp.at(ploc+1)++) = i;
+        }
+        else if(pvec[i] != -1 && gtlR.at(pvec.at(i)) == -1 && myCols.at(i)) mapSide[gtlD.at(i)] = msendsDisp++;
+    }
+    assert(msendsDisp == myownedrows);
+    esc.perform_sparse_comm(false, false);
+
+    /* now recv from each processor available in recvBuff */
+    idx_t f = Dloc.n;
+    comm_handle.init(f, esc.outDegree, esc.inDegree, totSendCnt, totRecvCnt, SparseComm<real_t>::P2P, comm, MPI_COMM_NULL, true, false); 
+    comm_handle.inSet = esc.outSet;
+    comm_handle.outSet = esc.inSet;
+    comm_handle.recvBuffPtr = Dloc.data.data() + (myownedrows*Dloc.n); 
+    for(int i=0; i < esc.inDegree; ++i) {
+        comm_handle.sendCount.at(i) = (esc.recvCount.at(i))*f;
+        comm_handle.sendDisp.at(i+1) = (esc.recvDisp.at(i+1))*f;
+    }
+    for(int i=0; i < esc.outDegree; ++i) {
+        comm_handle.recvCount.at(i) = (esc.sendCount.at(i))*f;
+        comm_handle.recvDisp.at(i+1) = (esc.sendDisp.at(i+1))*f;
+    }
+    if(comm_handle.commT == SparseComm<real_t>::NEIGHBOR){
+        MPI_Dist_graph_create_adjacent(comm, comm_handle.inDegree, comm_handle.inSet.data(),
+                MPI_WEIGHTS_EMPTY, comm_handle.outDegree, comm_handle.outSet.data(), MPI_WEIGHTS_EMPTY, MPI_INFO_NULL, 0, &comm_handle.commN);
+    }
+
+    /* prepare expand sendbuff based on the row/col IDs I recv 
+     * (what I send is what other processors tell me to send)*/
+    for ( size_t i = 0;  i < esc.inDegree; ++ i) {
+        idx_t d = esc.recvDisp.at(i);
+        for (size_t j = 0; j < esc.recvCount.at(i) ; j++) {
+            idx_t idx = esc.recvBuff.at(d+j);
+            assert(gtlD.at(idx) < (idx_t)-1); 
+            assert(mapSide[gtlD.at(idx)] <= myownedrows);
+            comm_handle.sendptr.at(d+j) = &Dloc.data.at(mapSide[gtlD.at(idx)] * f);
+        }
+    }
+    /* prepare expand recvbuff based on row/col IDs I send
+     * (what I recv is what I tell other processors to send) */
+    /*     for(size_t i = 0; i < esc.outDegree; ++i){
+     *         idx_t d = esc.sendDisp.at(i);
+     *         for (size_t j = 0; j < esc.sendCount.at(i); j++) {
+     *             idx_t idx = esc.sendBuff.at(d+j);
+     *             assert(gtlD.at(idx) < (idx_t) -1);
+     *             assert(mapSide[gtlD.at(idx)] >= myownedrows);
+     *             comm_handle.recvptr.at(d+j) = &Dloc.data.at(mapSide[gtlD.at(idx)] * f);
+     *         }
+     *     }
+     */
+
     return;
 
 ERR_EXIT:
@@ -174,6 +466,7 @@ void setup_3dsddmm_expand(denseMatrix& Aloc, denseMatrix& Bloc, cooMat& Cloc, ve
         if(recvCount.at(i) > 0 && i != myrank) esc.outDegree++;
     }
     esc.sendBuff.resize(totRecvCnt*2); esc.recvBuff.resize(totSendCnt*2);
+    esc.sendBuffPtr = esc.sendBuff.data(); esc.recvBuffPtr = esc.recvBuff.data();
     esc.inSet.resize(esc.inDegree); esc.outSet.resize(esc.outDegree);
     esc.recvCount.resize(esc.inDegree, 0); esc.sendCount.resize(esc.outDegree,0);
     esc.recvDisp.resize(esc.inDegree+2, 0); esc.sendDisp.resize(esc.outDegree+2,0);
@@ -220,7 +513,7 @@ void setup_3dsddmm_expand(denseMatrix& Aloc, denseMatrix& Bloc, cooMat& Cloc, ve
 
     /* now recv from each processor available in recvBuff */
     idx_t f = Aloc.n;
-    comm_expand.init(f, esc.outDegree, esc.inDegree, totSendCnt, totRecvCnt, SparseComm<real_t>::P2P, comm, MPI_COMM_NULL); 
+    comm_expand.init(f, esc.outDegree, esc.inDegree, totSendCnt, totRecvCnt, SparseComm<real_t>::P2P, comm, MPI_COMM_NULL, true, true); 
     comm_expand.inSet = esc.outSet;
     comm_expand.outSet = esc.inSet;
     for(int i=0; i < esc.inDegree; ++i) {
@@ -415,6 +708,54 @@ void setup_3dsddmm(
     //setup_3dsddmm_reduce(Cloc, comm_reduce, zcomm);
 
 }
+
+void setup_3dsddmm_NoBuffers(
+        cooMat& Cloc,
+        const idx_t f,
+        const int c ,
+        const MPI_Comm xycomm,
+        const MPI_Comm zcomm,
+        denseMatrix& Aloc,
+        denseMatrix& Bloc,
+        std::vector<int>& rpvec,
+        std::vector<int>& cpvec,
+        SparseComm<real_t>& comm_expandA,
+        SparseComm<real_t>& comm_expandB,
+        DComm::DenseComm& comm_post,
+        std::vector<idx_t>& mapA,
+        std::vector<idx_t>& mapB
+        )
+{
+    setup_side_noBuffs(Aloc, Cloc, 0, Cloc.gnrows, Cloc.gtlR, Cloc.ltgR, rpvec, comm_expandA, mapA, true, xycomm);
+    setup_side_noBuffs(Bloc, Cloc, 1, Cloc.gncols, Cloc.gtlC, Cloc.ltgC, cpvec, comm_expandB, mapB, true, xycomm);
+    comm_expandA.TAG = 88;
+    comm_expandB.TAG = 99;
+    setup_3dsddmm_reduce_scatter(Cloc, comm_post, zcomm);
+}
+void setup_3dsddmm_NoRecvBuffer(
+        cooMat& Cloc,
+        const idx_t f,
+        const int c ,
+        const MPI_Comm xycomm,
+        const MPI_Comm zcomm,
+        denseMatrix& Aloc,
+        denseMatrix& Bloc,
+        std::vector<int>& rpvec,
+        std::vector<int>& cpvec,
+        SparseComm<real_t>& comm_expandA,
+        SparseComm<real_t>& comm_expandB,
+        DComm::DenseComm& comm_post,
+        std::vector<idx_t>& mapA,
+        std::vector<idx_t>& mapB
+        )
+{
+    setup_side_noRecvBuff(Aloc, Cloc, 0, Cloc.gnrows, Cloc.gtlR, Cloc.ltgR, rpvec, comm_expandA, mapA, xycomm);
+    setup_side_noRecvBuff(Bloc, Cloc, 1, Cloc.gncols, Cloc.gtlC, Cloc.ltgC, cpvec, comm_expandB, mapB, xycomm);
+    comm_expandA.TAG = 88;
+    comm_expandB.TAG = 99;
+    setup_3dsddmm_reduce_scatter(Cloc, comm_post, zcomm);
+}
+
 void setup_spmm(
         cooMat& Cloc,
         const idx_t f,

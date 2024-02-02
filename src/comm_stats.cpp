@@ -72,6 +72,24 @@ void print_comm_stats_sparse(std::string mtxName, std::string algName, SparseCom
         printf("%s %s\n",stats_str.c_str(), times_str.c_str());
     }
 }
+void print_comm_stats_sparse2(std::string mtxName, std::string algName, SparseComm<real_t>& SpComm1, SparseComm<real_t> SpComm2, idx_t f, parallelTiming& pt, int X, int Y, int Z, MPI_Comm comm){
+
+    idx_large_t mySendVol, myRecvVol, mySendMsg, myRecvMsg;
+    mySendVol = std::accumulate(SpComm1.sendCount.begin(), SpComm1.sendCount.end(), 0.0)
+        + std::accumulate(SpComm2.sendCount.begin(), SpComm2.sendCount.end(), 0.0);
+    myRecvVol = std::accumulate(SpComm1.recvCount.begin(), SpComm1.recvCount.end(), 0.0)
+        + std::accumulate(SpComm2.recvCount.begin(), SpComm2.recvCount.end(), 0.0);
+    mySendMsg = SpComm1.outDegree + SpComm2.outDegree;
+    myRecvMsg = SpComm1.inDegree + SpComm2.inDegree;
+    int myrank, whowillprint; 
+    MPI_Comm_rank(comm, &myrank);
+    std::string stats_str, times_str;
+    whowillprint = get_timing_stats(pt.comm1Time, pt.comm2Time, pt.commcpyTime, pt.compTime, pt.totalTime, comm, times_str);
+    get_comm_stats(mtxName,algName, f, Z, comm, mySendMsg, mySendVol, myRecvMsg, myRecvVol, stats_str, whowillprint);
+    if(myrank == whowillprint){
+        printf("%s %s\n",stats_str.c_str(), times_str.c_str());
+    }
+}
 void print_comm_stats_dense(std::string mtxName,std::string algName, DenseComm& DComm, idx_t f,
         parallelTiming& pt, int X, int Y, int Z, MPI_Comm comm){
 

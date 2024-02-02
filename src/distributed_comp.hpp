@@ -33,6 +33,26 @@ void dist_spmm_spcomm(
             cooMat& C,
             MPI_Comm comm
             );
+    void dist_sddmm_spcomm2(
+            denseMatrix& A,
+            denseMatrix& B,
+            cooMat& S,
+            SparseComm<real_t>& comm_preA,
+            SparseComm<real_t>& comm_preB,
+            DenseComm& comm_post,
+            cooMat& C,
+            MPI_Comm comm
+            );
+    void dist_sddmm_spcomm3(
+            denseMatrix& A,
+            denseMatrix& B,
+            cooMat& S,
+            SparseComm<real_t>& comm_preA,
+            SparseComm<real_t>& comm_preB,
+            DenseComm& comm_post,
+            cooMat& C,
+            MPI_Comm comm
+            );
     void dist_sddmm_dcomm(
             denseMatrix& A,
             denseMatrix& B,

@@ -18,6 +18,7 @@ namespace SpKernels{
                 std::unordered_map<IdxT, IdxT> gtlR, gtlC;
                 virtual void localizeIndices(){};
                 virtual void delocalizeIndices(){};
+                virtual void ReMapIndices(std::vector<IdxT> mapR, std::vector<IdxT>mapC){};
                 std::string mtxName;
                 int rank, xyrank, zrank;
                 IdxT nrows, ncols, ownedNnz, gnrows, gncols;
@@ -95,6 +96,13 @@ namespace SpKernels{
                     jj.at(i) = this->gtlC.at(col);
                 }
 
+            }
+            void ReMapIndices(std::vector<IdxT> mapR, std::vector<IdxT>mapC)
+            {
+                for(idx_large_t i = 0; i < this->nnz; ++i){
+                    ii[i] =  mapR[ii[i]];
+                    jj[i] =  mapC[jj[i]];
+                }
             }
 
 
