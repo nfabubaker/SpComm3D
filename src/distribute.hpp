@@ -28,7 +28,6 @@ namespace SpKernels {
             std::vector<int>& rpvec,
             std::vector<int>& cpvec,
             cooMat& Cloc,
-            const idx_t f,
             MPI_Comm cartXYcomm,
             MPI_Comm zcomm,
             MPI_Comm world_comm);

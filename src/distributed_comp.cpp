@@ -93,13 +93,19 @@ void dist_sddmm_spcomm(
             parallelTiming pt = {0}; 
             auto totStart = chrono::high_resolution_clock::now();
             auto start = chrono::high_resolution_clock::now();
-            comm_pre.perform_sparse_comm(true, false);
+            comm_pre.issue_Irecvs();
+            auto start2 = chrono::high_resolution_clock::now();
+            comm_pre.copy_to_sendbuff();
+            auto stop2 = chrono::high_resolution_clock::now();
+            pt.commcpyTime = chrono::duration_cast<chrono::milliseconds>(stop2-start2).count();
+            comm_pre.issue_Sends();
+            comm_pre.issue_Waitall();
+            start2 = chrono::high_resolution_clock::now();
+            comm_pre.copy_from_recvbuff();
+            stop2 = chrono::high_resolution_clock::now();
             auto stop = chrono::high_resolution_clock::now();
             pt.comm1Time = chrono::duration_cast<chrono::milliseconds>(stop-start).count(); 
-            start = chrono::high_resolution_clock::now();
-            comm_pre.copy_from_recvbuff();
-            stop = chrono::high_resolution_clock::now();
-            pt.commcpyTime = chrono::duration_cast<chrono::milliseconds>(stop-start).count();
+            pt.commcpyTime+= chrono::duration_cast<chrono::milliseconds>(stop2-start2).count();
 /*             if(C.rank == 0){
  *                 std::cout << "Aloc before sddmm (sp):" << std::endl;
  *                 //C.printOwnedMatrix(10);
@@ -162,8 +168,8 @@ void dist_sddmm_spcomm3(
             pt.totalTime = chrono::duration_cast<chrono::milliseconds>(totStop-totStart).count();
             MPI_Barrier(MPI_COMM_WORLD);
             
-            print_comm_stats_sparse2(C.mtxName, "sparse sddmm PRE", comm_preA, comm_preB, A.n, pt,X,Y,Z, MPI_COMM_WORLD);
-            print_comm_stats_dense(C.mtxName, "sparse sddmm POST",comm_post, A.n, pt,X,Y,Z, MPI_COMM_WORLD);
+            print_comm_stats_sparse2(C.mtxName, "sparseNB sddmm PRE", comm_preA, comm_preB, A.n, pt,X,Y,Z, MPI_COMM_WORLD);
+            print_comm_stats_dense(C.mtxName, "sparseNB sddmm POST",comm_post, A.n, pt,X,Y,Z, MPI_COMM_WORLD);
 
 
 }
@@ -210,8 +216,8 @@ void dist_sddmm_spcomm2(
             pt.totalTime = chrono::duration_cast<chrono::milliseconds>(totStop-totStart).count();
             MPI_Barrier(MPI_COMM_WORLD);
             
-            print_comm_stats_sparse2(C.mtxName, "sparse sddmm PRE", comm_preA, comm_preB, A.n, pt,X,Y,Z, MPI_COMM_WORLD);
-            print_comm_stats_dense(C.mtxName, "sparse sddmm POST",comm_post, A.n, pt,X,Y,Z, MPI_COMM_WORLD);
+            print_comm_stats_sparse2(C.mtxName, "sparseNRB sddmm PRE", comm_preA, comm_preB, A.n, pt,X,Y,Z, MPI_COMM_WORLD);
+            print_comm_stats_dense(C.mtxName, "sparseNRB sddmm POST",comm_post, A.n, pt,X,Y,Z, MPI_COMM_WORLD);
 
 
 }

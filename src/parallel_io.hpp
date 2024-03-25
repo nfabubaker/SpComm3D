@@ -12,7 +12,6 @@
 #include "comm.hpp"
 
 #include "basic.hpp"
-#include "mpio.h"
 #include <algorithm>
 
 using namespace std;
