@@ -776,6 +776,7 @@ void setup_spmm(
     /* swap send and recv data in comm_reduce */
 
     swap(comm_reduce.recvBuff, comm_reduce.sendBuff);
+    swap(comm_reduce.recvBuffPtr, comm_reduce.sendBuffPtr);
     swap(comm_reduce.recvDisp, comm_reduce.sendDisp);
     swap(comm_reduce.recvCount, comm_reduce.sendCount);
     swap(comm_reduce.recvptr, comm_reduce.sendptr);

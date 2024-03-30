@@ -6,6 +6,8 @@ sddmmbin:
 	$(CC) --std=c++17 -O3 -o sddmmbin miniapp/main_binary_mm.cpp src/*.cpp -I./src
 benchSddmm: 
 	$(CC) --std=c++17 -O3 -o bench_sddmm miniapp/bench_sddmm.cpp src/*.cpp -I./src
+benchSpMM: 
+	$(CC) --std=c++17 -O3 -o bench_spmm miniapp/bench_spmm.cpp src/*.cpp -I./src
 	#g++ -O3 -o sddmm miniapp/main.cpp src/*.cpp -I/usr/include/x86_64-linux-gnu/mpich -L/usr/lib/x86_64-linux-gnu -lmpi
 spmm:
 	$(CC) --std=c++17 -O3 -o spmm miniapp/main_spmm.cpp src/*.cpp -I./src

@@ -15,27 +15,34 @@ using namespace DComm;
 
 
 void dist_spmm_spcomm(
+
             denseMatrix& X,
             cooMat& A,
             denseMatrix& Y,
             SparseComm<real_t>& comm_pre,
             SparseComm<real_t>& comm_post,
             MPI_Comm comm){
-            int dX,dY,dZ;
+            int Xd,Yd,Zd;
             std::array<int, 3> dims, t1, t2;
             MPI_Cart_get(comm, 3, dims.data(), t1.data(), t2.data());
-            dX = dims[0]; dY=dims[1]; dZ=dims[2];
+            Xd = dims[0]; Yd=dims[1]; Zd=dims[2];
 
             parallelTiming pt = {0}; 
             auto totStart = chrono::high_resolution_clock::now();
             auto start = chrono::high_resolution_clock::now();
-            comm_pre.perform_sparse_comm(true, false);
+            comm_pre.issue_Irecvs();
+            auto start2 = chrono::high_resolution_clock::now();
+            comm_pre.copy_to_sendbuff();
+            auto stop2 = chrono::high_resolution_clock::now();
+            pt.commcpyTime = chrono::duration_cast<chrono::milliseconds>(stop2-start2).count();
+            comm_pre.issue_Sends();
+            comm_pre.issue_Waitall();
+            start2 = chrono::high_resolution_clock::now();
+            comm_pre.copy_from_recvbuff();
+            stop2 = chrono::high_resolution_clock::now();
             auto stop = chrono::high_resolution_clock::now();
             pt.comm1Time = chrono::duration_cast<chrono::milliseconds>(stop-start).count(); 
-            start = chrono::high_resolution_clock::now();
-            comm_pre.copy_from_recvbuff();
-            stop = chrono::high_resolution_clock::now();
-            pt.commcpyTime = chrono::duration_cast<chrono::milliseconds>(stop-start).count();
+            pt.commcpyTime+= chrono::duration_cast<chrono::milliseconds>(stop2-start2).count();
 /*             if(C.rank == 0){
  *                 std::cout << "Aloc before sddmm (sp):" << std::endl;
  *                 //C.printOwnedMatrix(10);
@@ -43,40 +50,94 @@ void dist_spmm_spcomm(
  *             }
  */
             start = chrono::high_resolution_clock::now();
-            spmm(X, A, Y);
+            spmm(X,A,Y);
             stop = chrono::high_resolution_clock::now();
             pt.compTime = chrono::duration_cast<chrono::milliseconds>(stop-start).count();
-/*             if(C.rank == 0){
- *                 std::cout << "Cloc after sddmm:" << std::endl;
- *                 C.printOwnedMatrix(10);
- *             }
- */
             start = chrono::high_resolution_clock::now();
-            comm_post.perform_sparse_comm(true,false);
+            comm_post.issue_Irecvs();
+            start2 = chrono::high_resolution_clock::now();
+            comm_pre.copy_from_recvbuff();
+            stop2 = chrono::high_resolution_clock::now();
+            pt.commcpyTime += chrono::duration_cast<chrono::milliseconds>(stop2-start2).count();
+            comm_post.issue_Sends();
+            comm_post.issue_Waitall();
+            start2 = chrono::high_resolution_clock::now();
+            comm_post.SUM_from_recvbuff();
+            stop2 = chrono::high_resolution_clock::now();
+            pt.commcpyTime += chrono::duration_cast<chrono::milliseconds>(stop2-start2).count();
             stop = chrono::high_resolution_clock::now();
             pt.comm2Time = chrono::duration_cast<chrono::milliseconds>(stop-start).count();
-            start = chrono::high_resolution_clock::now();
-            comm_post.SUM_from_recvbuff();
-            stop = chrono::high_resolution_clock::now();
-            pt.commcpyTime += chrono::duration_cast<chrono::milliseconds>(stop-start).count();
             auto totStop = chrono::high_resolution_clock::now(); 
             pt.totalTime = chrono::duration_cast<chrono::milliseconds>(totStop-totStart).count();
-/*             if(C.rank == 0){
- *                 std::cout << "Cloc after sparse reduce:" << std::endl;
- *                 C.printOwnedMatrix(10);
- *             }
- */
-            /*         MPI_Barrier(MPI_COMM_WORLD);
-             *         if(rank == 0){
-             *             std::cout << "Cloc after reduce:" << std::endl;
-             *             Cloc.printOwnedMatrix(10);
-             *         }
-             */
-
+            MPI_Barrier(MPI_COMM_WORLD);
             
-            print_comm_stats_sparse(A.mtxName, "sparse spmm PRE", comm_pre, X.n, pt,dX,dY,dZ, MPI_COMM_WORLD);
-            print_comm_stats_sparse(A.mtxName,"sparse spmm POST",comm_post, X.n, pt,dX,dY,dZ, MPI_COMM_WORLD);
+            print_comm_stats_sparse(A.mtxName, "sparse spmm PRE", comm_pre, X.n, pt,Xd,Yd,Zd, MPI_COMM_WORLD);
+            print_comm_stats_sparse(A.mtxName, "sparse spmm POST",comm_post, X.n, pt,Xd,Yd,Zd, MPI_COMM_WORLD);
 }
+
+//void dist_spmm_spcomm(
+//            denseMatrix& X,
+//            cooMat& A,
+//            denseMatrix& Y,
+//            SparseComm<real_t>& comm_pre,
+//            SparseComm<real_t>& comm_post,
+//            MPI_Comm comm){
+//            int dX,dY,dZ;
+//            std::array<int, 3> dims, t1, t2;
+//            MPI_Cart_get(comm, 3, dims.data(), t1.data(), t2.data());
+//            dX = dims[0]; dY=dims[1]; dZ=dims[2];
+//
+//            parallelTiming pt = {0}; 
+//            auto totStart = chrono::high_resolution_clock::now();
+//            auto start = chrono::high_resolution_clock::now();
+//            comm_pre.perform_sparse_comm(true, false);
+//            auto stop = chrono::high_resolution_clock::now();
+//            pt.comm1Time = chrono::duration_cast<chrono::milliseconds>(stop-start).count(); 
+//            start = chrono::high_resolution_clock::now();
+//            comm_pre.copy_from_recvbuff();
+//            stop = chrono::high_resolution_clock::now();
+//            pt.commcpyTime = chrono::duration_cast<chrono::milliseconds>(stop-start).count();
+///*             if(C.rank == 0){
+// *                 std::cout << "Aloc before sddmm (sp):" << std::endl;
+// *                 //C.printOwnedMatrix(10);
+// *                 A.printMatrix(10);
+// *             }
+// */
+//            start = chrono::high_resolution_clock::now();
+//            spmm(X, A, Y);
+//            stop = chrono::high_resolution_clock::now();
+//            pt.compTime = chrono::duration_cast<chrono::milliseconds>(stop-start).count();
+///*             if(C.rank == 0){
+// *                 std::cout << "Cloc after sddmm:" << std::endl;
+// *                 C.printOwnedMatrix(10);
+// *             }
+// */
+//            start = chrono::high_resolution_clock::now();
+//            comm_post.perform_sparse_comm(true,false);
+//            stop = chrono::high_resolution_clock::now();
+//            pt.comm2Time = chrono::duration_cast<chrono::milliseconds>(stop-start).count();
+//            start = chrono::high_resolution_clock::now();
+//            comm_post.SUM_from_recvbuff();
+//            stop = chrono::high_resolution_clock::now();
+//            pt.commcpyTime += chrono::duration_cast<chrono::milliseconds>(stop-start).count();
+//            auto totStop = chrono::high_resolution_clock::now(); 
+//            pt.totalTime = chrono::duration_cast<chrono::milliseconds>(totStop-totStart).count();
+///*             if(C.rank == 0){
+// *                 std::cout << "Cloc after sparse reduce:" << std::endl;
+// *                 C.printOwnedMatrix(10);
+// *             }
+// */
+//            /*         MPI_Barrier(MPI_COMM_WORLD);
+//             *         if(rank == 0){
+//             *             std::cout << "Cloc after reduce:" << std::endl;
+//             *             Cloc.printOwnedMatrix(10);
+//             *         }
+//             */
+//
+//            
+//            print_comm_stats_sparse(A.mtxName, "sparse spmm PRE", comm_pre, X.n, pt,dX,dY,dZ, MPI_COMM_WORLD);
+//            print_comm_stats_sparse(A.mtxName,"sparse spmm POST",comm_post, X.n, pt,dX,dY,dZ, MPI_COMM_WORLD);
+//}
 void dist_sddmm_spcomm(
             denseMatrix& A,
             denseMatrix& B,
