@@ -30,7 +30,7 @@ void vals_from_str(string str, vector<idx_t>& vals){
     }
 }
 
-void process_args(int argc, char *argv[], std::vector<idx_t>& fvals, int& c, string& filename){
+void process_args(int argc, char *argv[], std::vector<idx_t>& fvals, int& c, int& niter, string& filename){
     int choice;
     while (1)
     {
@@ -52,7 +52,7 @@ no_argument: " "
 required_argument: ":"
 optional_argument: "::" */
 
-        choice = getopt_long( argc, argv, "vh:k:c:",
+        choice = getopt_long( argc, argv, "vh:k:c:i:",
                 long_options, &option_index);
 
         if (choice == -1)
@@ -63,15 +63,15 @@ optional_argument: "::" */
             case 'k':
                 vals_from_str(string(optarg), fvals);
                 break;
-            case 'c':
+            case 'z':
                 c = atoi(optarg);
                 break;
             case 'v':
                 printf("3D SDDMM version 1.0\n");
                 break;
             case 'h':
-                printf("3D SDDMM version 1.0\n");
-                printf("usage: sddmm [-k <k value>] [-c <c value] /path/to/matrix");
+                printf("SpComm3D version 1.0\n");
+                printf("usage: benchSddmm [-k <k value>] [-z <z value>] [-i <num iterations>] /path/to/matrix.bin");
                 break;
 
             case '?':
@@ -95,29 +95,13 @@ optional_argument: "::" */
          */
     }
     else{
-        printf("usage: sddmm [-k <k value>] [-c <c value] /path/to/matrix");
+        printf("usage: benchSddmm [-k <k value>] [-z <z value>] [-i <num iterations>] /path/to/matrix.bin");
         exit(EXIT_FAILURE);
     }
     return;
 
 }
 
-void print_numerical_sum(cooMat& C, MPI_Comm zcomm, MPI_Comm worldcomm){
-    real_t sum = 0.0;
-    int myzrank, myworldrank, zsize;
-    MPI_Comm_rank(zcomm, &myzrank);
-    MPI_Comm_size(zcomm, &zsize);
-    MPI_Comm_rank(worldcomm, &myworldrank);
-    //idx_t owned_startIdx, owned_endIdx;
-    //idx_t no_pp = C.nnz / zsize;
-    //idx_t no_pp_r = C.nnz % zsize;
-    //owned_startIdx = (myzrank < no_pp_r ? myzrank * (no_pp+1) : no_pp_r*no_pp+ (myzrank-no_pp_r)*no_pp); 
-    //owned_endIdx = owned_startIdx+(myzrank < no_pp_r ? no_pp+1: no_pp);
-    //for(idx_large_t i = owned_startIdx; i < owned_endIdx; ++i) sum += C.vv[i];
-    sum = std::accumulate(C.ownedVals.begin(), C.ownedVals.end(), 0.0);
-
-    printf("Numerical sum at p%d = %.2f\n", myworldrank, sum );
-}
 
 int main(int argc, char *argv[])
 {
@@ -232,7 +216,6 @@ int main(int argc, char *argv[])
                 dist_sddmm_spcomm2(Aloc, Bloc, Sloc, comm_expandA, comm_expandB, comm_reduce, Cloc, cartcomm);
             Sloc.ReMapIndices(mapAI, mapBI);
             Cloc.ReMapIndices(mapAI, mapBI);
-            //      print_numerical_sum(Cloc, zcomm, cartcomm);
         }
         { /* distribute A,B and respect communication, setup sparse comm*/
             for(auto& elm : Cloc.vv) elm = 0.0;
@@ -250,7 +233,6 @@ int main(int argc, char *argv[])
 
             for(int i = 0; i < NUM_ITER; ++i)
                 dist_sddmm_spcomm(Aloc, Bloc, Sloc, comm_expand, comm_reduce, Cloc, cartcomm);
-            //       print_numerical_sum(Cloc, zcomm, cartcomm);
         }
         /* instance #2: dense */
         {
@@ -280,7 +262,6 @@ int main(int argc, char *argv[])
                 Cloc.jj[i] = Sloc.jj[i] = mapBI[Cloc.jj[i]];
             }
 
-            //            print_numerical_sum(Cloc, zcomm, cartcomm);
 
             MPI_Comm_free(&comm_pre.commX);
             MPI_Comm_free(&comm_pre.commY);

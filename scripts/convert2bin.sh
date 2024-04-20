@@ -1,5 +1,5 @@
 infile=$1
-exc=/home/nabil/projects/3dsddmm/conv2bin
+exc=/PATH/TO/conv2bin
 while read -r line
 do
     outFN=`echo $(dirname $line)"/"$(basename $line .mtx)".bin"`
