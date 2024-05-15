@@ -113,7 +113,8 @@ int main(int argc, char *argv[])
     string filename;
     int c;
     vector<idx_t> fvals;
-    process_args(argc, argv, fvals, c, filename);
+    int niter = 10;
+    process_args(argc, argv, fvals, c, niter, filename);
     std::string::size_type const p(filename.find_last_of('.'));
     std::string mtxName = filename.substr(0, p);
     mtxName = mtxName.substr(mtxName.find_last_of("/\\") +1);
