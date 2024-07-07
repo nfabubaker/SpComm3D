@@ -13,16 +13,16 @@ namespace SpKernels{
         class SparseMatrix
         {
             public:
-                std::vector<IdxT> ltgR, ltgC;
-                std::vector<T> ownedVals;
-                std::unordered_map<IdxT, IdxT> gtlR, gtlC;
-                virtual void localizeIndices(){};
-                virtual void delocalizeIndices(){};
+                std::vector<IdxT> ltgR, ltgC;    // local to global row/col mapping
+                std::vector<T> ownedVals;        // local values
+                std::unordered_map<IdxT, IdxT> gtlR, gtlC;    // global to local mapping
+                virtual void localizeIndices(){};       // generate new index mappings
+                virtual void delocalizeIndices(){};     // not overridden?
                 virtual void ReMapIndices(std::vector<IdxT> mapR, std::vector<IdxT>mapC){};
                 std::string mtxName;
-                int rank, xyrank, zrank;
+                int rank, xyrank, zrank;    // rank in MPI_COMM_WORLD, 2D COMM, 3D COMM
                 IdxT nrows, ncols, ownedNnz, gnrows, gncols;
-                idx_large_t nnz, gnnz;
+                idx_large_t nnz, gnnz;      // local and global nnz
             private:
                 /* data */
 

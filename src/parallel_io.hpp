@@ -17,22 +17,23 @@
 using namespace std;
 namespace SpKernels{
     void read_bin_parallel_distribute(
-            std::string filename,
-            std::vector<triplet>& myelms,
-            idx_t& grows,
-            idx_t& gcols,
-            idx_large_t& gnnz,
-            idx_large_t& lnnz,
-            std::vector<int>& rpvec2D,
-            std::vector<int>& cpvec2D,
-            MPI_Comm worldcomm,
-            MPI_Comm xycomm,
-            MPI_Comm zcomm){
+            std::string filename,                                   // name of the file to read from
+            std::vector<triplet>& myelms,                           // vector of local COO Triplets
+            idx_t& grows, idx_t& gcols, idx_large_t& gnnz,          // global size information (#rows, #cols, nnz)
+            idx_large_t& lnnz,                                      // local nnz
+            std::vector<int>& rpvec2D, std::vector<int>& cpvec2D,   // row/col partition ? (2D grid)
+            MPI_Comm worldcomm, MPI_Comm xycomm, MPI_Comm zcomm     // communicators (3D Cartesian, 2D (XY) , 1D (Z))
+    )    {
+        // declare communicator-related variables and coordinates in COMM Grids
         int myworldrank, worldsize, myxyrank, myzrank, xysize, zsize;
         int X,Y,Z;
         std::array<int, 3> dims, t1, t2;
+
+        // Retrieve topology information associated with the *3D* communicator
         MPI_Cart_get(worldcomm, 3, dims.data(), t1.data(), t2.data());
         X = dims[0]; Y=dims[1]; Z=dims[2];
+
+        // get rank within and size for each of the 3 Communicators
         MPI_Comm_rank( worldcomm, &myworldrank);
         MPI_Comm_size( worldcomm, &worldsize);
         MPI_Comm_rank( xycomm, &myxyrank);
@@ -53,8 +54,9 @@ namespace SpKernels{
         MPI_Type_create_struct(nitems, blocklengths, offsets, types, 
                 &mpi_s_type);
         MPI_Type_commit(&mpi_s_type);
+        
         /* get XY comm 
-         * if zcomm = 0 pefrorm the read
+         * if zcomm = 0 perfrorm the read
          * */
         MPI_File file;
         MPI_File_open(xycomm, filename.data(), MPI_MODE_RDONLY, MPI_INFO_NULL, &file);

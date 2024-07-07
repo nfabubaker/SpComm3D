@@ -3,6 +3,7 @@
 #include "denseComm.hpp"
 #include "mpi.h"
 #include "SparseMatrix.hpp"
+#include <array>
 
 
 using namespace DComm;

@@ -4,6 +4,7 @@
 #include "distributed_comp.hpp"
 #include "core_ops.hpp"
 #include "comm_stats.hpp"
+#include <array>
 
 
 

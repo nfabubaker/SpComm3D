@@ -6,6 +6,7 @@
 #include <numeric>
 #include <sstream>
 #include <string>
+#include <array>
 
 using namespace DComm;
 using namespace SpKernels;

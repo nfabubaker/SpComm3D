@@ -8,7 +8,7 @@
 #include "comm.hpp"
 #include "Mesh3D.hpp"
 #include "mpi.h"
-#include <SparseMatrix.hpp>
+#include "SparseMatrix.hpp"
 
 
 namespace SpKernels {

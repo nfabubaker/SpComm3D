@@ -3,9 +3,9 @@
 #include <mpi.h>
 #include <sys/types.h>
 #include <vector>
-#include "../src/basic.hpp"
-#include "../src/mm.hpp"
-#include "../src/comm_stats.hpp"
+#include "basic.hpp"
+#include "mm.hpp"
+#include "comm_stats.hpp"
 #include <getopt.h>
 #include <chrono>
 #include "distribute.hpp"
